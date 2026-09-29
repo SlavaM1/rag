@@ -1,0 +1,72 @@
+[
+  {
+    "id": "q01",
+    "question": "Какой HTTP path и transport использует Weather MCP server?",
+    "expectation": ["Указать Streamable HTTP", "Указать path /mcp и stateless_http=True"],
+    "expected_sources": ["08-weather-mcp.md"],
+    "expected_sections": ["HTTP и lifecycle"]
+  },
+  {
+    "id": "q02",
+    "question": "Какие ограничения имеет параметр days у get_weather_forecast?",
+    "expectation": ["days является integer", "Допустимый диапазон от 1 до 3"],
+    "expected_sources": ["07-mcp-tools.md"],
+    "expected_sections": ["get_weather_forecast"]
+  },
+  {
+    "id": "q03",
+    "question": "Где находятся FAISS индексы этого учебного RAG-проекта и когда они строятся?",
+    "expectation": ["Назвать data/rag/fixed и data/rag/structural", "Объяснить, что отсутствующие индексы строятся при первом Docker start"],
+    "expected_sources": ["15-docker.md"],
+    "expected_sections": ["Docker и Compose"]
+  },
+  {
+    "id": "q04",
+    "question": "Почему WeatherScheduler не воспроизводит пропущенные запуски после restart и как восстанавливаются active schedules?",
+    "expectation": ["APScheduler jobs не persistent", "Active schedules читаются из SQLite и регистрируются заново", "next run пересчитывается от restart"],
+    "expected_sources": ["09-scheduler-mcp.md"],
+    "expected_sections": ["Восстановление после restart"]
+  },
+  {
+    "id": "q05",
+    "question": "Как проходит обычное сообщение пользователя от Angular UI до сохранения истории чата?",
+    "expectation": ["Указать ApiService, nginx, FastAPI и ChatAgent", "Указать сохранение user и assistant messages в PostgreSQL"],
+    "expected_sources": ["22-data-flows.md", "04-frontend.md", "03-backend.md"],
+    "expected_sections": ["Обычный LLM запрос", "Отправка", "Сохранение exchange"]
+  },
+  {
+    "id": "q06",
+    "question": "Чем отличаются get_current_weather и run_weather_collection_now с точки зрения persistence?",
+    "expectation": ["get_current_weather не создаёт sample", "run_weather_collection_now сохраняет один WeatherSample", "Второй tool не создаёт schedule"],
+    "expected_sources": ["07-mcp-tools.md"],
+    "expected_sections": ["get_current_weather", "run_weather_collection_now"]
+  },
+  {
+    "id": "q07",
+    "question": "Какие настройки нужны старому OpenAI-compatible LLM client и как backend обрабатывает отсутствие конфигурации?",
+    "expectation": ["Назвать LLM_API_KEY, LLM_BASE_URL и LLM_MODEL", "Указать LLMConfigurationError и HTTP 503 для agent endpoint"],
+    "expected_sources": ["05-llm-integration.md", "16-configuration.md"],
+    "expected_sections": ["Обязательная конфигурация", "LLM"]
+  },
+  {
+    "id": "q08",
+    "question": "Опишите полный путь MCP weather tool call: от выбора LLM до нормализованного результата, включая обработку ответа wttr.in.",
+    "expectation": ["LLM выбирает tool из discovery schema", "Backend вызывает MCP через ClientSession", "WeatherService вызывает WttrWeatherClient и нормализует payload", "Результат возвращается LLM как tool message"],
+    "expected_sources": ["22-data-flows.md", "06-mcp-architecture.md", "08-weather-mcp.md"],
+    "expected_sections": ["Weather request", "Выполнение и возврат результата", "Flow погодного запроса"]
+  },
+  {
+    "id": "q09",
+    "question": "Сравните хранение chat history и weather schedules: какие базы используются, кто управляет schema и какие данные в них хранятся?",
+    "expectation": ["Chat history хранится в PostgreSQL через SQLAlchemy/Alembic", "Weather schedules и samples находятся в SQLite", "SQLite schema не входит в Alembic"],
+    "expected_sources": ["11-database.md", "01-architecture.md", "09-scheduler-mcp.md"],
+    "expected_sections": ["Обзор хранилищ", "Persistence", "Хранение задач и результатов"]
+  },
+  {
+    "id": "q10",
+    "question": "Какие security-риски связаны с LLM ключом, MCP tools и отсутствием authentication в текущем проекте?",
+    "expectation": ["Ключ передаётся только в Authorization и .env исключён из Git/build context", "Нет authentication/authorization и tenant isolation", "Вызываются только discovered tools, но смена MCP_SERVER_URL меняет capabilities"],
+    "expected_sources": ["20-security.md", "06-mcp-architecture.md"],
+    "expected_sections": ["Секреты", "Authentication и authorization", "Риски MCP tool execution", "Передача schema LLM"]
+  }
+]

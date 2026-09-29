@@ -6,7 +6,11 @@ from .conftest import FakeEmbeddingProvider, make_chunk
 
 
 def test_search_service_uses_both_strategies_and_metadata(tmp_path):
-    settings = Settings(tmp_path / "docs", tmp_path / "data", "fake", 100, 10, 200, 20, 5, 20, 1000)
+    settings = Settings(
+        tmp_path / "docs", tmp_path / "data", "fake", 100, 10, 200, 20, 5, 20, 1000,
+        None, "https://api.deepseek.com", "deepseek-flash", ("deepseek-flash", "deepseek-v4-pro"),
+        0.2, 100, 10.0, 10, tmp_path / "rag.db",
+    )
     for strategy, vector in (("fixed", [1.0, 0.0, 1.0]), ("structural", [0.0, 1.0, 1.0])):
         store = VectorStore()
         store.add([make_chunk(strategy, f"{strategy} weather", strategy)], [vector])

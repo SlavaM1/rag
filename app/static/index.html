@@ -3,41 +3,72 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>RAG Search</title>
+    <title>RAG Chat</title>
     <link rel="stylesheet" href="/static/style.css">
   </head>
   <body>
-    <main class="page">
-      <header>
-        <p class="eyebrow">LOCAL RETRIEVAL</p>
-        <h1>RAG Search</h1>
-        <p class="subtitle">Similarity search over the prepared Markdown knowledge base. No answer generation.</p>
-      </header>
-      <form id="search-form" class="search-panel">
-        <label for="query">Вопрос</label>
-        <input id="query" name="query" maxlength="1000" required placeholder="Как работает Weather MCP?" autofocus>
-        <fieldset>
-          <legend>Strategy</legend>
-          <label><input type="radio" name="strategy" value="structural" checked> Structural</label>
-          <label><input type="radio" name="strategy" value="fixed"> Fixed</label>
-        </fieldset>
-        <label for="top-k">Top K</label>
-        <input id="top-k" name="top-k" type="number" value="5" min="1" max="20">
-        <button type="submit">Найти</button>
-      </form>
-      <p id="status" class="status" aria-live="polite"></p>
-      <section aria-labelledby="results-title">
-        <div class="results-heading"><h2 id="results-title">Results</h2><span id="result-count"></span></div>
-        <div id="results" class="results"></div>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <p class="eyebrow">DAY 22 / RETRIEVAL + GENERATION</p>
+        <h1>RAG Chat</h1>
+        <button id="new-chat" class="new-chat" type="button">+ Новый чат</button>
+        <div class="side-heading"><span>Chats</span><button id="refresh-chats" class="text-button" type="button">Обновить</button></div>
+        <nav id="chat-list" class="chat-list" aria-label="История чатов"></nav>
+      </aside>
+
+      <section class="workspace">
+        <header class="workspace-header">
+          <div>
+            <p class="eyebrow">GROUNDING EXPERIMENT</p>
+            <h2>Один вопрос, две траектории</h2>
+          </div>
+          <p class="legend"><span class="dot"></span>Context is retrieved only in WITH RAG</p>
+        </header>
+
+        <form id="controls" class="controls">
+          <fieldset>
+            <legend>Mode</legend>
+            <label><input type="radio" name="mode" value="with_rag" checked> WITH RAG</label>
+            <label><input type="radio" name="mode" value="without_rag"> WITHOUT RAG</label>
+          </fieldset>
+          <label>Model
+            <select id="model" name="model">
+              <option value="deepseek-flash" selected>DeepSeek Flash</option>
+              <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+            </select>
+          </label>
+          <label>Strategy
+            <select id="strategy" name="strategy">
+              <option value="structural" selected>Structural</option>
+              <option value="fixed">Fixed</option>
+            </select>
+          </label>
+          <label>Top-K
+            <input id="top-k" name="top-k" type="number" value="5" min="1" max="20">
+          </label>
+        </form>
+
+        <p id="status" class="status" aria-live="polite"></p>
+        <section id="conversation" class="conversation" aria-live="polite">
+          <div class="empty-state">Начните новый чат или выберите сохранённый. Ответы WITH RAG будут содержать реальные chunks и ссылки на них.</div>
+        </section>
+
+        <form id="question-form" class="composer">
+          <label for="question">User</label>
+          <textarea id="question" name="question" maxlength="1000" required placeholder="Как работает Weather MCP?"></textarea>
+          <div class="composer-actions">
+            <button id="send" type="submit">Отправить</button>
+            <button id="compare" class="secondary" type="button">Сравнить RAG / без RAG</button>
+          </div>
+        </form>
       </section>
     </main>
-    <template id="result-template">
-      <article class="result">
-        <div class="result-top"><h3></h3><strong></strong></div>
-        <p class="source"></p>
-        <p class="path"></p>
-        <p class="chunk-id"></p>
-        <pre></pre>
+    <template id="message-template">
+      <article class="message">
+        <div class="message-head"><strong class="role"></strong><span class="model"></span></div>
+        <div class="message-content"></div>
+        <div class="sources"></div>
+        <details class="rag-details"><summary>RAG details</summary><div></div></details>
       </article>
     </template>
     <script src="/static/app.js"></script>

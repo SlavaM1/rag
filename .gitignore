@@ -10,3 +10,5 @@ data/rag/fixed/*
 data/rag/structural/*
 !data/rag/fixed/.gitkeep
 !data/rag/structural/.gitkeep
+data/rag.db
+data/huggingface/

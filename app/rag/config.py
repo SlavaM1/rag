@@ -20,6 +20,15 @@ class Settings:
     default_top_k: int
     max_top_k: int
     max_query_length: int
+    deepseek_api_key: str | None
+    deepseek_base_url: str
+    deepseek_default_model: str
+    deepseek_available_models: tuple[str, ...]
+    deepseek_temperature: float
+    deepseek_max_tokens: int
+    deepseek_timeout_seconds: float
+    chat_history_messages: int
+    chat_database_path: Path
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -37,6 +46,21 @@ class Settings:
             default_top_k=int(os.getenv("RAG_DEFAULT_TOP_K", "5")),
             max_top_k=int(os.getenv("RAG_MAX_TOP_K", "20")),
             max_query_length=int(os.getenv("RAG_MAX_QUERY_LENGTH", "1000")),
+            deepseek_api_key=os.getenv("DEEPSEEK_API_KEY") or None,
+            deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/"),
+            deepseek_default_model=os.getenv("DEEPSEEK_DEFAULT_MODEL", "deepseek-flash"),
+            deepseek_available_models=tuple(
+                model.strip()
+                for model in os.getenv(
+                    "DEEPSEEK_AVAILABLE_MODELS", "deepseek-flash,deepseek-v4-pro"
+                ).split(",")
+                if model.strip()
+            ),
+            deepseek_temperature=float(os.getenv("DEEPSEEK_TEMPERATURE", "0.2")),
+            deepseek_max_tokens=int(os.getenv("DEEPSEEK_MAX_TOKENS", "1024")),
+            deepseek_timeout_seconds=float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "45")),
+            chat_history_messages=int(os.getenv("CHAT_HISTORY_MESSAGES", "10")),
+            chat_database_path=PROJECT_ROOT / os.getenv("RAG_CHAT_DB_PATH", "data/rag.db"),
         )
 
     def index_path(self, strategy: str) -> Path:

@@ -1,54 +1,179 @@
-const form = document.querySelector("#search-form");
-const results = document.querySelector("#results");
+const controls = document.querySelector("#controls");
+const questionForm = document.querySelector("#question-form");
+const questionInput = document.querySelector("#question");
+const conversation = document.querySelector("#conversation");
+const chatList = document.querySelector("#chat-list");
 const status = document.querySelector("#status");
-const resultCount = document.querySelector("#result-count");
-const template = document.querySelector("#result-template");
+const template = document.querySelector("#message-template");
+let activeChatId = null;
 
-function setLoading(isLoading) {
-  form.querySelector("button").disabled = isLoading;
-  status.textContent = isLoading ? "Ищу релевантные фрагменты..." : "";
+const modelNames = {
+  "deepseek-flash": "DeepSeek Flash",
+  "deepseek-v4-pro": "DeepSeek V4 Pro",
+};
+
+function settings() {
+  return {
+    mode: controls.mode.value,
+    model: controls.model.value,
+    strategy: controls.strategy.value,
+    top_k: Number(controls["top-k"].value),
+  };
 }
 
-function showResults(items) {
-  results.replaceChildren();
-  resultCount.textContent = items.length ? `${items.length} найдено` : "Ничего не найдено";
-  items.forEach((item, index) => {
-    const node = template.content.cloneNode(true);
-    const metadata = item.metadata;
-    node.querySelector("h3").textContent = `#${index + 1} ${metadata.title}`;
-    node.querySelector("strong").textContent = `score: ${item.score.toFixed(4)}`;
-    node.querySelector(".source").textContent = metadata.file;
-    node.querySelector(".path").textContent = metadata.section_path || metadata.section;
-    node.querySelector(".chunk-id").textContent = item.chunk_id;
-    node.querySelector("pre").textContent = item.text;
-    results.append(node);
+function setBusy(busy, text = "") {
+  document.querySelector("#send").disabled = busy;
+  document.querySelector("#compare").disabled = busy;
+  status.classList.toggle("error", false);
+  status.textContent = text;
+}
+
+function showError(error) {
+  status.classList.add("error");
+  status.textContent = `Ошибка: ${error.message}`;
+}
+
+async function request(url, options = {}) {
+  const response = await fetch(url, options);
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.detail || "Request failed");
+  return payload;
+}
+
+function clearEmptyState() {
+  const empty = conversation.querySelector(".empty-state");
+  if (empty) empty.remove();
+}
+
+function usageText(usage = {}) {
+  const input = usage.prompt_tokens ?? "-";
+  const output = usage.completion_tokens ?? "-";
+  const total = usage.total_tokens ?? "-";
+  return `LLM usage: input ${input}, output ${output}, total ${total}`;
+}
+
+function appendSources(container, sources) {
+  if (!sources?.length) return;
+  const details = document.createElement("details");
+  details.className = "sources-list";
+  const summary = document.createElement("summary");
+  summary.textContent = `Sources (${sources.length})`;
+  details.append(summary);
+  sources.forEach((source) => {
+    const item = document.createElement("article");
+    item.className = "source-card";
+    const metadata = document.createElement("p");
+    metadata.textContent = `#${source.number}  score: ${Number(source.score).toFixed(4)}\nfile: ${source.file}\nsection: ${source.section}\nsection path: ${source.section_path}\nchunk id: ${source.chunk_id}`;
+    const text = document.createElement("pre");
+    text.textContent = source.text;
+    item.append(metadata, text);
+    details.append(item);
+  });
+  container.append(details);
+}
+
+function appendMessage(message) {
+  clearEmptyState();
+  const node = template.content.cloneNode(true);
+  const article = node.querySelector(".message");
+  const isUser = message.role === "user";
+  article.classList.add(isUser ? "user-message" : "assistant-message");
+  node.querySelector(".role").textContent = isUser ? "User" : `Assistant${message.compareLabel ? ` - ${message.compareLabel}` : ""}`;
+  node.querySelector(".model").textContent = message.model ? modelNames[message.model] || message.model : "";
+  node.querySelector(".message-content").textContent = message.content || message.answer;
+  const sourceContainer = node.querySelector(".sources");
+  appendSources(sourceContainer, message.sources);
+  const details = node.querySelector(".rag-details");
+  if (isUser) {
+    details.remove();
+  } else {
+    const retrieved = (message.sources || []).map((source) => `#${source.number} ${Number(source.score).toFixed(4)} ${source.file} | ${source.section} | ${source.chunk_id}`).join("\n") || "No chunks retrieved.";
+    details.querySelector("div").textContent = `model: ${message.model}\nmode: ${message.mode}\nstrategy: ${message.strategy ?? "-"}\ntop_k: ${message.top_k ?? "-"}\n\nretrieved chunks:\n${retrieved}\n\n${usageText(message.usage)}`;
+  }
+  conversation.append(node);
+  conversation.scrollTop = conversation.scrollHeight;
+}
+
+function showConversation(messages) {
+  conversation.replaceChildren();
+  if (!messages.length) {
+    conversation.innerHTML = '<div class="empty-state">Этот чат пока пуст.</div>';
+    return;
+  }
+  messages.forEach(appendMessage);
+}
+
+async function loadChats() {
+  const payload = await request("/api/chats");
+  chatList.replaceChildren();
+  payload.chats.forEach((chat) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = `chat-item${chat.id === activeChatId ? " active" : ""}`;
+    item.textContent = chat.title;
+    item.addEventListener("click", () => loadChat(chat.id));
+    chatList.append(item);
   });
 }
 
-form.addEventListener("submit", async (event) => {
+async function loadChat(chatId) {
+  const chat = await request(`/api/chats/${chatId}`);
+  activeChatId = chat.id;
+  showConversation(chat.messages);
+  await loadChats();
+}
+
+document.querySelector("#new-chat").addEventListener("click", () => {
+  activeChatId = null;
+  showConversation([]);
+  questionInput.focus();
+  loadChats().catch(showError);
+});
+
+document.querySelector("#refresh-chats").addEventListener("click", () => loadChats().catch(showError));
+
+questionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const query = form.query.value.trim();
-  if (!query) return;
-  setLoading(true);
-  results.replaceChildren();
-  resultCount.textContent = "";
+  const question = questionInput.value.trim();
+  if (!question) return;
+  setBusy(true, "DeepSeek формирует ответ...");
   try {
-    const response = await fetch("/api/search", {
+    const payload = await request("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query,
-        strategy: form.strategy.value,
-        top_k: Number(form["top-k"].value),
-      }),
+      body: JSON.stringify({ chat_id: activeChatId, question, ...settings() }),
     });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "Search request failed");
-    showResults(payload.results);
+    activeChatId = payload.chat_id;
+    appendMessage({ role: "user", content: question });
+    appendMessage(payload);
+    questionInput.value = "";
+    await loadChats();
+    setBusy(false);
   } catch (error) {
-    status.textContent = `Ошибка: ${error.message}`;
-    status.classList.add("error");
-  } finally {
-    setLoading(false);
+    showError(error);
+    setBusy(false);
   }
 });
+
+document.querySelector("#compare").addEventListener("click", async () => {
+  const question = questionInput.value.trim();
+  if (!question) return showError(new Error("Введите вопрос для сравнения"));
+  setBusy(true, "Запускаю baseline и RAG с одинаковыми параметрами...");
+  try {
+    const payload = await request("/api/compare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, ...settings() }),
+    });
+    conversation.replaceChildren();
+    appendMessage({ role: "user", content: payload.question });
+    appendMessage({ ...payload.without_rag, compareLabel: "WITHOUT RAG" });
+    appendMessage({ ...payload.with_rag, compareLabel: "WITH RAG" });
+    setBusy(false);
+  } catch (error) {
+    showError(error);
+    setBusy(false);
+  }
+});
+
+loadChats().catch(showError);
