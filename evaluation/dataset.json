@@ -1,0 +1,17 @@
+[
+  {"query": "Из каких сервисов и хранилищ состоит архитектура mcp-ai?", "expected_files": ["01-architecture.md", "00-overview.md"]},
+  {"query": "Как FastAPI сохраняет успешный или ошибочный обмен с агентом?", "expected_files": ["03-backend.md"]},
+  {"query": "Какое состояние Angular интерфейса блокируется во время отправки сообщения?", "expected_files": ["04-frontend.md"]},
+  {"query": "Какие настройки LLM обязательны и какой endpoint использует клиент?", "expected_files": ["05-llm-integration.md"]},
+  {"query": "Как MCP tools обнаруживаются и ограничиваются текущей server session?", "expected_files": ["06-mcp-architecture.md"]},
+  {"query": "Какие восемь инструментов предоставляет Weather MCP?", "expected_files": ["07-mcp-tools.md"]},
+  {"query": "Какие ошибки weather provider возвращает Weather MCP и есть ли fallback?", "expected_files": ["08-weather-mcp.md"]},
+  {"query": "Как APScheduler восстанавливает weather schedules после перезапуска?", "expected_files": ["09-scheduler-mcp.md"]},
+  {"query": "Какой лимит у multi-tool execution и выполняются ли вызовы последовательно?", "expected_files": ["10-orchestration.md"]},
+  {"query": "Что хранится в ChatMessage.mcp_data и какая база данных его использует?", "expected_files": ["11-database.md"]},
+  {"query": "Чем отличаются PostgreSQL с Alembic и SQLite в проекте?", "expected_files": ["11-database.md"]},
+  {"query": "Как запустить Docker Compose и какие volume сохраняют данные?", "expected_files": ["15-docker.md", "17-running-project.md"]},
+  {"query": "Какие значения и диапазоны у MAX_TOOL_CALLS и MCP_TIMEOUT_SECONDS?", "expected_files": ["16-configuration.md"]},
+  {"query": "Какие риски безопасности связаны с secrets, CORS, TLS и MCP tools?", "expected_files": ["20-security.md"]},
+  {"query": "Опиши поток scheduled weather collection от запроса до SQLite.", "expected_files": ["22-data-flows.md", "23-use-cases.md"]}
+]

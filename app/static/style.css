@@ -1,0 +1,31 @@
+:root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #17221f; background: #f4f0e8; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.page { width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: 64px 0; }
+header { border-left: 5px solid #d25d31; padding-left: 20px; margin-bottom: 32px; }
+.eyebrow { color: #a44a27; font-size: .76rem; font-weight: 800; letter-spacing: .14em; margin: 0 0 8px; }
+h1, h2, h3 { font-family: Georgia, serif; margin: 0; }
+h1 { font-size: clamp(2.25rem, 7vw, 4rem); }
+.subtitle { color: #53605c; max-width: 640px; line-height: 1.5; }
+.search-panel { background: #fffdf9; border: 1px solid #d8d0c4; box-shadow: 8px 8px 0 #d9e7dd; display: grid; gap: 12px; padding: 24px; }
+label, legend { font-size: .9rem; font-weight: 700; }
+input { border: 1px solid #9ca9a2; border-radius: 3px; font: inherit; padding: 11px; width: 100%; }
+fieldset { border: 0; display: flex; gap: 24px; margin: 0; padding: 0; }
+fieldset label { font-weight: 500; }
+fieldset input { width: auto; }
+button { background: #183d35; border: 0; color: white; cursor: pointer; font: inherit; font-weight: 800; padding: 12px 22px; width: fit-content; }
+button:disabled { cursor: wait; opacity: .65; }
+.status { min-height: 1.5em; color: #53605c; }
+.status.error { color: #a3291f; }
+.results-heading { align-items: baseline; display: flex; gap: 12px; justify-content: space-between; margin: 40px 0 12px; }
+.results-heading span { color: #53605c; font-size: .9rem; }
+.results { display: grid; gap: 16px; }
+.result { background: #fffdf9; border-top: 3px solid #d25d31; padding: 20px; }
+.result-top { align-items: baseline; display: flex; gap: 12px; justify-content: space-between; }
+.result-top h3 { font-size: 1.2rem; }
+.result-top strong { color: #246653; font-family: ui-monospace, monospace; font-size: .85rem; }
+.source { font-weight: 800; margin: 16px 0 3px; }
+.path, .chunk-id { color: #53605c; font-size: .86rem; margin: 3px 0; overflow-wrap: anywhere; }
+.chunk-id { font-family: ui-monospace, monospace; }
+pre { background: #f0ede5; font: .86rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; margin: 16px 0 0; max-height: 330px; overflow: auto; padding: 14px; white-space: pre-wrap; }
+@media (max-width: 560px) { .page { padding: 32px 0; } .result-top { align-items: flex-start; flex-direction: column; } fieldset { gap: 12px; } }

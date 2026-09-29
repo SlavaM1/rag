@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RAG Search</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="page">
+      <header>
+        <p class="eyebrow">LOCAL RETRIEVAL</p>
+        <h1>RAG Search</h1>
+        <p class="subtitle">Similarity search over the prepared Markdown knowledge base. No answer generation.</p>
+      </header>
+      <form id="search-form" class="search-panel">
+        <label for="query">Вопрос</label>
+        <input id="query" name="query" maxlength="1000" required placeholder="Как работает Weather MCP?" autofocus>
+        <fieldset>
+          <legend>Strategy</legend>
+          <label><input type="radio" name="strategy" value="structural" checked> Structural</label>
+          <label><input type="radio" name="strategy" value="fixed"> Fixed</label>
+        </fieldset>
+        <label for="top-k">Top K</label>
+        <input id="top-k" name="top-k" type="number" value="5" min="1" max="20">
+        <button type="submit">Найти</button>
+      </form>
+      <p id="status" class="status" aria-live="polite"></p>
+      <section aria-labelledby="results-title">
+        <div class="results-heading"><h2 id="results-title">Results</h2><span id="result-count"></span></div>
+        <div id="results" class="results"></div>
+      </section>
+    </main>
+    <template id="result-template">
+      <article class="result">
+        <div class="result-top"><h3></h3><strong></strong></div>
+        <p class="source"></p>
+        <p class="path"></p>
+        <p class="chunk-id"></p>
+        <pre></pre>
+      </article>
+    </template>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
