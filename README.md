@@ -2,6 +2,48 @@
 
 Учебный проект, который явно показывает разницу между baseline generation и retrieval-augmented generation поверх Markdown-базы `docs/rag/**/*.md`. Day 21 retrieval сохраняется: Markdown loader, fixed/structural chunking, multilingual embeddings, FAISS, `/api/search`, CLI и chunking evaluation.
 
+## Day 23 - Query Rewrite, Filtering And Reranking
+
+Day 22 behaviour remains available as `baseline` retrieval:
+
+```text
+Question
+  ↓
+FAISS Top-K
+  ↓
+Context
+  ↓
+DeepSeek
+```
+
+The default `enhanced` retrieval pipeline is deliberately separate:
+
+```text
+Original question
+  ↓
+Query Rewrite
+  ↓
+FAISS candidate search (15)
+  ↓
+Similarity filter
+  ↓
+Local multilingual reranker
+  ↓
+Final Top-K (5)
+  ↓
+Context + original question
+  ↓
+DeepSeek
+```
+
+Query rewrite improves the search wording, not the answer question. For example, `А weather как прогноз получает?` can become `Как Weather MCP получает прогноз погоды и какие API или tools используются?`; the final model still receives the original user text.
+
+FAISS always returns nearest chunks, including weak matches. `RAG_SIMILARITY_THRESHOLD` removes weak candidates before generation. The default `0.40` is the first tested cutoff that actually removes weak candidates in this corpus; its expected-source trade-off is recorded in the Day 23 report. It is not a percentage or confidence value. If every candidate is removed, the model receives an explicit no-relevant-context instruction and must not answer from its own knowledge.
+
+Vector search is fast candidate selection. The CPU-compatible local cross-encoder `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` compares the rewritten query with each surviving chunk more precisely and reorders them. It is lazy-loaded once per application process; its raw score is also not a probability.
+
+`/api/chat` exposes `baseline` and `enhanced`; internal environment flags allow rewrite, filter, and rerank stages to be disabled independently for experiments. The UI keeps only Baseline and Enhanced. Every enhanced response includes original FAISS rank, final rank, similarity score, rerank score, candidates that failed the threshold, timings, and the final context sources.
+
 ## Day 22 - RAG Generation
 
 ### WITHOUT RAG
@@ -69,11 +111,11 @@ SQLite chat history находится в `data/rag.db`. Она содержит
 Vanilla JavaScript UI поддерживает:
 
 - новый чат и список сохранённых чатов;
-- WITH RAG / WITHOUT RAG;
+- WITH RAG / WITHOUT RAG and Baseline / Enhanced retrieval selector;
 - friendly model selector DeepSeek Flash / DeepSeek V4 Pro;
-- fixed / structural strategy и Top-K;
+- fixed / structural strategy, candidate Top-K and final Top-K;
 - раскрываемые sources и RAG details с chunks и usage;
-- кнопку сравнения двух ответов от одной модели.
+- Day 22 compare (RAG / without RAG) and Day 23 compare (Baseline / Enhanced), including retrieval metadata.
 
 ## API
 
@@ -88,13 +130,19 @@ Vanilla JavaScript UI поддерживает:
 `POST /api/chat` создаёт или продолжает persisted chat:
 
 ```json
-{"chat_id":null,"question":"Как работает Weather MCP?","mode":"with_rag","model":"deepseek-flash","strategy":"structural","top_k":5}
+{"chat_id":null,"question":"Как работает Weather MCP?","mode":"with_rag","retrieval_mode":"enhanced","model":"deepseek-flash","strategy":"structural","candidate_top_k":15,"final_top_k":5}
 ```
 
 `POST /api/compare` запускает без persistence две ветки одного question с одной model:
 
 ```json
 {"question":"Как работает Weather MCP?","model":"deepseek-flash","strategy":"structural","top_k":5}
+```
+
+`POST /api/compare-retrieval` compares the same question, model, strategy and final Top-K across baseline and enhanced RAG:
+
+```json
+{"question":"Как работает Weather MCP?","model":"deepseek-flash","strategy":"structural","candidate_top_k":15,"final_top_k":5}
 ```
 
 Chats API: `POST /api/chats`, `GET /api/chats`, `GET /api/chats/{chat_id}`, `DELETE /api/chats/{chat_id}`.
@@ -131,7 +179,7 @@ Day 21 retrieval/chunking comparison:
 python scripts/compare_chunking.py
 ```
 
-Day 22 has ten documentation-grounded questions in `evaluation/day22_questions.json`: three factual, four medium and three multi-document questions. Use Compare UI and record manual findings in `evaluation/day22_results.md`; no LLM-as-a-judge is used.
+Day 22 has ten documentation-grounded questions in `evaluation/day22_questions.json`. Day 23 retains them and adds conversational and multi-document retrieval cases in `evaluation/day23_questions.json`. Run `docker compose run --rm app python scripts/evaluate_day23.py` to write `data/rag/day23_comparison.md`; the committed run is in `evaluation/day23_results.md`. It reports Hit@1/3/5, candidate/filter/final averages, reranking changes, score distributions, original/rewritten query, and retrieved chunks. No LLM-as-a-judge is used.
 
 ## Tests
 

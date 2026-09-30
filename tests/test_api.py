@@ -17,6 +17,19 @@ class FakeLLMProvider:
         return LLMResponse("Generated answer", model, 10, 5, 15, "stop")
 
 
+class FakeRewriter:
+    async def rewrite(self, question):
+        return question
+
+
+class FakeReranker:
+    def rerank(self, query, chunks):
+        for rank, chunk in enumerate(chunks, start=1):
+            chunk["rerank_score"] = float(rank)
+            chunk["final_rank"] = rank
+        return chunks
+
+
 def chat_client(tmp_path):
     settings = Settings(
         tmp_path / "docs", tmp_path / "data", "fake", 100, 10, 200, 20, 5, 20, 1000,
@@ -24,14 +37,14 @@ def chat_client(tmp_path):
         0.2, 100, 10.0, 10, tmp_path / "rag.db",
     )
     repository = ChatRepository(settings.chat_database_path)
-    rag_service = RAGService(settings, StubSearchService(), FakeLLMProvider(), repository)
+    rag_service = RAGService(settings, StubSearchService(), FakeLLMProvider(), repository, query_rewriter=FakeRewriter(), reranker=FakeReranker())
     return TestClient(create_app(rag_service.search_service, rag_service, repository))
 
 
 def test_health_and_search_api():
     client = TestClient(create_app(StubSearchService()))
 
-    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/health").json()["status"] == "ok"
     response = client.post("/api/search", json={"query": "weather", "strategy": "fixed", "top_k": 1})
     assert response.status_code == 200
     assert response.json()["results"][0]["chunk_id"] == "chunk"
@@ -57,6 +70,13 @@ def test_chat_compare_and_history_apis(tmp_path):
     comparison = client.post("/api/compare", json={"question": "Weather?", "model": "deepseek-v4-pro"})
     assert comparison.status_code == 200
     assert comparison.json()["without_rag"]["model"] == comparison.json()["with_rag"]["model"]
+    enhanced = client.post("/api/chat", json={"question": "Weather?", "retrieval_mode": "enhanced", "candidate_top_k": 3, "final_top_k": 1})
+    assert enhanced.status_code == 200
+    assert enhanced.json()["retrieval_mode"] == "enhanced"
+    retrieval_comparison = client.post("/api/compare-retrieval", json={"question": "Weather?", "candidate_top_k": 3, "final_top_k": 1})
+    assert retrieval_comparison.status_code == 200
+    assert retrieval_comparison.json()["baseline"]["retrieval_mode"] == "baseline"
+    assert client.post("/api/compare-retrieval", json={"question": "Weather?", "candidate_top_k": 1, "final_top_k": 2}).status_code == 422
     assert client.delete(f"/api/chats/{chat_id}").json() == {"deleted": True}
 
 

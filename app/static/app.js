@@ -17,13 +17,16 @@ function settings() {
     mode: controls.mode.value,
     model: controls.model.value,
     strategy: controls.strategy.value,
-    top_k: Number(controls["top-k"].value),
+    retrieval_mode: controls.retrieval_mode.value,
+    candidate_top_k: Number(controls["candidate-top-k"].value),
+    final_top_k: Number(controls["final-top-k"].value),
   };
 }
 
 function setBusy(busy, text = "") {
   document.querySelector("#send").disabled = busy;
   document.querySelector("#compare").disabled = busy;
+  document.querySelector("#compare-retrieval").disabled = busy;
   status.classList.toggle("error", false);
   status.textContent = text;
 }
@@ -63,7 +66,8 @@ function appendSources(container, sources) {
     const item = document.createElement("article");
     item.className = "source-card";
     const metadata = document.createElement("p");
-    metadata.textContent = `#${source.number}  score: ${Number(source.score).toFixed(4)}\nfile: ${source.file}\nsection: ${source.section}\nsection path: ${source.section_path}\nchunk id: ${source.chunk_id}`;
+    const rerank = source.rerank_score == null ? "-" : Number(source.rerank_score).toFixed(4);
+    metadata.textContent = `Final rank: #${source.final_rank ?? source.number}\nOriginal FAISS rank: #${source.original_rank ?? source.number}\nSimilarity score: ${Number(source.similarity_score ?? source.score).toFixed(4)}\nRerank score: ${rerank}\nfile: ${source.file}\nsection: ${source.section}\nsection path: ${source.section_path}\nchunk id: ${source.chunk_id}`;
     const text = document.createElement("pre");
     text.textContent = source.text;
     item.append(metadata, text);
@@ -87,8 +91,11 @@ function appendMessage(message) {
   if (isUser) {
     details.remove();
   } else {
-    const retrieved = (message.sources || []).map((source) => `#${source.number} ${Number(source.score).toFixed(4)} ${source.file} | ${source.section} | ${source.chunk_id}`).join("\n") || "No chunks retrieved.";
-    details.querySelector("div").textContent = `model: ${message.model}\nmode: ${message.mode}\nstrategy: ${message.strategy ?? "-"}\ntop_k: ${message.top_k ?? "-"}\n\nretrieved chunks:\n${retrieved}\n\n${usageText(message.usage)}`;
+    const retrieved = (message.sources || []).map((source) => `final #${source.final_rank ?? source.number}, FAISS #${source.original_rank ?? source.number}: similarity ${Number(source.similarity_score ?? source.score).toFixed(4)}, rerank ${source.rerank_score == null ? "-" : Number(source.rerank_score).toFixed(4)} | ${source.file} | ${source.section}`).join("\n") || "No chunks reached the context.";
+    const retrieval = message.retrieval || {};
+    const timing = Object.entries(message.timings || {}).map(([name, value]) => `${name}: ${value} ms`).join("\n") || "-";
+    const candidates = (retrieval.candidates || []).map((source) => `FAISS #${source.original_rank}: ${Number(source.similarity_score).toFixed(4)}, threshold ${source.passed_threshold ?? "-"}, rerank ${source.rerank_score == null ? "-" : Number(source.rerank_score).toFixed(4)}, final ${source.final_rank ?? "-"} | ${source.file} | ${source.section}`).join("\n") || "-";
+    details.querySelector("div").textContent = `model: ${message.model}\nmode: ${message.mode}\nretrieval mode: ${message.retrieval_mode ?? "-"}\nstrategy: ${message.strategy ?? "-"}\n\nOriginal question:\n${message.original_question ?? "-"}\n\nRewritten query:\n${message.rewritten_query ?? "-"}\n\nCandidate Top-K: ${retrieval.candidate_top_k ?? "-"}\nCandidates retrieved: ${retrieval.candidates_found ?? "-"}\nSimilarity threshold: ${retrieval.similarity_threshold ?? "-"}\nPassed threshold: ${retrieval.after_filter ?? "-"}\nFinal Top-K: ${retrieval.final_top_k ?? message.top_k ?? "-"}\n\nTimings:\n${timing}\n\nFAISS candidates:\n${candidates}\n\ncontext chunks:\n${retrieved}\n\n${usageText(message.usage)}`;
   }
   conversation.append(node);
   conversation.scrollTop = conversation.scrollHeight;
@@ -132,6 +139,11 @@ document.querySelector("#new-chat").addEventListener("click", () => {
 
 document.querySelector("#refresh-chats").addEventListener("click", () => loadChats().catch(showError));
 
+controls.mode.forEach((input) => input.addEventListener("change", () => {
+  const enabled = controls.mode.value === "with_rag";
+  document.querySelectorAll("#retrieval-mode-control input, #candidate-top-k, #final-top-k").forEach((input) => { input.disabled = !enabled; });
+}));
+
 questionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const question = questionInput.value.trim();
@@ -169,6 +181,27 @@ document.querySelector("#compare").addEventListener("click", async () => {
     appendMessage({ role: "user", content: payload.question });
     appendMessage({ ...payload.without_rag, compareLabel: "WITHOUT RAG" });
     appendMessage({ ...payload.with_rag, compareLabel: "WITH RAG" });
+    setBusy(false);
+  } catch (error) {
+    showError(error);
+    setBusy(false);
+  }
+});
+
+document.querySelector("#compare-retrieval").addEventListener("click", async () => {
+  const question = questionInput.value.trim();
+  if (!question) return showError(new Error("Введите вопрос для сравнения"));
+  setBusy(true, "Сравниваю baseline и enhanced retrieval...");
+  try {
+    const payload = await request("/api/compare-retrieval", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, model: controls.model.value, strategy: controls.strategy.value, candidate_top_k: Number(controls["candidate-top-k"].value), final_top_k: Number(controls["final-top-k"].value) }),
+    });
+    conversation.replaceChildren();
+    appendMessage({ role: "user", content: payload.question });
+    appendMessage({ ...payload.baseline, compareLabel: "BASELINE RAG" });
+    appendMessage({ ...payload.enhanced, compareLabel: "ENHANCED RAG" });
     setBusy(false);
   } catch (error) {
     showError(error);

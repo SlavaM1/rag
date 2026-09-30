@@ -29,6 +29,14 @@ class Settings:
     deepseek_timeout_seconds: float
     chat_history_messages: int
     chat_database_path: Path
+    query_rewrite_enabled: bool = True
+    query_rewrite_model: str = "deepseek-flash"
+    candidate_top_k: int = 15
+    final_top_k: int = 5
+    similarity_threshold: float = 0.4
+    filter_enabled: bool = True
+    rerank_enabled: bool = True
+    rerank_model: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -61,7 +69,20 @@ class Settings:
             deepseek_timeout_seconds=float(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "45")),
             chat_history_messages=int(os.getenv("CHAT_HISTORY_MESSAGES", "10")),
             chat_database_path=PROJECT_ROOT / os.getenv("RAG_CHAT_DB_PATH", "data/rag.db"),
+            query_rewrite_enabled=_env_bool("RAG_QUERY_REWRITE_ENABLED", True),
+            query_rewrite_model=os.getenv("RAG_QUERY_REWRITE_MODEL", "deepseek-flash"),
+            candidate_top_k=int(os.getenv("RAG_CANDIDATE_TOP_K", "15")),
+            final_top_k=int(os.getenv("RAG_FINAL_TOP_K", "5")),
+            similarity_threshold=float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.4")),
+            filter_enabled=_env_bool("RAG_FILTER_ENABLED", True),
+            rerank_enabled=_env_bool("RAG_RERANK_ENABLED", True),
+            rerank_model=os.getenv("RAG_RERANK_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"),
         )
 
     def index_path(self, strategy: str) -> Path:
         return self.data_path / strategy
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    return default if value is None else value.strip().lower() in {"1", "true", "yes", "on"}

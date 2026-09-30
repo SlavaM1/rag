@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 from pathlib import Path
 
 
@@ -57,6 +58,16 @@ class ChatRepository:
                 CREATE INDEX IF NOT EXISTS message_sources_message_id_rank ON message_sources(message_id, rank);
                 """
             )
+            # ALTER TABLE is additive, so existing Day 22 databases and conversations remain intact.
+            self._add_column(connection, "messages", "retrieval_mode TEXT")
+            self._add_column(connection, "messages", "original_question TEXT")
+            self._add_column(connection, "messages", "rewritten_query TEXT")
+            self._add_column(connection, "messages", "retrieval_metadata TEXT")
+            self._add_column(connection, "message_sources", "similarity_score REAL")
+            self._add_column(connection, "message_sources", "rerank_score REAL")
+            self._add_column(connection, "message_sources", "original_rank INTEGER")
+            self._add_column(connection, "message_sources", "final_rank INTEGER")
+            self._add_column(connection, "message_sources", "passed_threshold INTEGER")
 
     def create_chat(self, title: str = "New chat") -> dict[str, object]:
         with self._connect() as connection:
@@ -107,20 +118,30 @@ class ChatRepository:
         model: str,
         usage: dict[str, int | None],
         sources: list[dict[str, object]],
+        retrieval_mode: str | None = None,
+        original_question: str | None = None,
+        rewritten_query: str | None = None,
+        retrieval: dict[str, object] | None = None,
     ) -> int:
         with self._connect() as connection:
             self._chat(connection, chat_id)
             cursor = connection.execute(
                 """INSERT INTO messages
-                (chat_id, role, content, mode, model, prompt_tokens, completion_tokens, total_tokens)
-                VALUES (?, 'assistant', ?, ?, ?, ?, ?, ?)""",
-                (chat_id, content, mode, model, usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]),
+                (chat_id, role, content, mode, model, prompt_tokens, completion_tokens, total_tokens,
+                 retrieval_mode, original_question, rewritten_query, retrieval_metadata)
+                VALUES (?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    chat_id, content, mode, model, usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"],
+                    retrieval_mode, original_question, rewritten_query,
+                    json.dumps(retrieval, ensure_ascii=False) if retrieval is not None else None,
+                ),
             )
             message_id = int(cursor.lastrowid)
             connection.executemany(
                 """INSERT INTO message_sources
-                (message_id, rank, chunk_id, score, file, section, section_path, text)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (message_id, rank, chunk_id, score, file, section, section_path, text, similarity_score,
+                 rerank_score, original_rank, final_rank, passed_threshold)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 [
                     (
                         message_id,
@@ -131,6 +152,11 @@ class ChatRepository:
                         source["section"],
                         source["section_path"],
                         source["text"],
+                        source.get("similarity_score", source["score"]),
+                        source.get("rerank_score"),
+                        source.get("original_rank"),
+                        source.get("final_rank"),
+                        int(source["passed_threshold"]) if source.get("passed_threshold") is not None else None,
                     )
                     for source in sources
                 ],
@@ -147,6 +173,13 @@ class ChatRepository:
         connection.execute("UPDATE chats SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (chat_id,))
 
     @staticmethod
+    def _add_column(connection: sqlite3.Connection, table: str, definition: str) -> None:
+        name = definition.split()[0]
+        columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+        if name not in columns:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
+
+    @staticmethod
     def _chat(connection: sqlite3.Connection, chat_id: int) -> dict[str, object]:
         row = connection.execute("SELECT * FROM chats WHERE id = ?", (chat_id,)).fetchone()
         if row is None:
@@ -157,7 +190,8 @@ class ChatRepository:
     def _message(connection: sqlite3.Connection, row: sqlite3.Row) -> dict[str, object]:
         message = dict(row)
         sources = connection.execute(
-            "SELECT rank, chunk_id, score, file, section, section_path, text FROM message_sources WHERE message_id = ? ORDER BY rank",
+            """SELECT rank, chunk_id, score, file, section, section_path, text, similarity_score, rerank_score,
+               original_rank, final_rank, passed_threshold FROM message_sources WHERE message_id = ? ORDER BY rank""",
             (message["id"],),
         ).fetchall()
         message["sources"] = [{"number": source["rank"], **dict(source)} for source in sources]
@@ -166,4 +200,6 @@ class ChatRepository:
             "completion_tokens": message.pop("completion_tokens"),
             "total_tokens": message.pop("total_tokens"),
         }
+        retrieval_metadata = message.pop("retrieval_metadata", None)
+        message["retrieval"] = json.loads(retrieval_metadata) if retrieval_metadata else None
         return message

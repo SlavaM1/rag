@@ -23,6 +23,16 @@ class SearchService:
             self._stores[strategy] = store
         matches = store.search(self.embedding_provider.embed_query(query), top_k)
         return [
-            {"score": round(score, 4), "chunk_id": chunk.chunk_id, "text": chunk.text, "metadata": chunk.metadata.to_dict()}
-            for score, chunk in matches
+            {
+                "score": round(score, 4),
+                "similarity_score": round(score, 4),
+                "original_rank": rank,
+                "passed_threshold": None,
+                "rerank_score": None,
+                "final_rank": None,
+                "chunk_id": chunk.chunk_id,
+                "text": chunk.text,
+                "metadata": chunk.metadata.to_dict(),
+            }
+            for rank, (score, chunk) in enumerate(matches, start=1)
         ]
