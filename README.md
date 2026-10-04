@@ -2,6 +2,51 @@
 
 Учебный проект, который явно показывает разницу между baseline generation и retrieval-augmented generation поверх Markdown-базы `docs/rag/**/*.md`. Day 21 retrieval сохраняется: Markdown loader, fixed/structural chunking, multilingual embeddings, FAISS, `/api/search`, CLI и chunking evaluation.
 
+## Day 25 - Conversational RAG And Task Memory
+
+Day 25 разделяет два вида контекста. **Conversation History** — последние реальные user/assistant сообщения, ограниченные `CHAT_HISTORY_MESSAGES=10`. **Task State** — компактная структурированная память текущего чата: `goal`, `clarifications`, `constraints`, `terms`, `decisions` и `open_questions`. Она не является пересказом всех сообщений и не переносится между чатами.
+
+```text
+New User Message
+       ↓
+Recent History + Task State
+       ↓
+Update Task State
+       ↓
+Context-aware Query
+       ↓
+Query Rewrite → FAISS → Filter → Rerank
+       ↓
+Relevant Sources
+       ↓
+DeepSeek
+       ↓
+Grounded Answer + Sources + Quotes
+       ↓
+Persist Answer + Updated Task State
+```
+
+Каждый новый `WITH RAG` turn выполняет новый retrieval. Enhanced rewrite получает текущий вопрос, ограниченную history и уже обновлённый Task State, поэтому может раскрыть ссылки вроде «где он это сохраняет?» через сохранённые goal/terms/constraints. Финальная генерация также видит Task State и recent history, но технические факты разрешено брать только из свежего RAG context. Даже заполненная память не обходит `insufficient_context` и exact-quote validation.
+
+Task State обновляется одним небольшим structured-вызовом `deepseek-flash` на user turn. JSON валидируется Pydantic-схемой; timeout, provider error или malformed JSON оставляет прежнее состояние и не прерывает основной answer flow. SQLite-таблица `chat_task_state` хранит один versioned JSON snapshot на `chat_id`, provenance последнего user message и удаляется cascade вместе с чатом. Старые чаты без строки state читаются с пустой памятью.
+
+Пример различия history и memory:
+
+```text
+User: Теперь интересует только scheduler. Frontend не рассматриваем.
+
+Task State:
+goal = scheduler flow
+constraints = [ignore frontend]
+
+...ещё 10 сообщений, исходная реплика вышла из history window...
+
+User: А где это хранится?
+
+Task State всё ещё содержит goal и constraint. Они помогают построить retrieval query,
+но ответ всё равно требует новых sources и точных quotes из базы знаний.
+```
+
 ## Day 24 - Sources, Quotes And Anti-Hallucination
 
 Ответ модели сам по себе не является доказательством. Поэтому успешный WITH RAG результат теперь всегда имеет machine-readable `status=answered` и три отдельные части: **Answer**, **Sources** и **Quotes**. Source показывает, из какого backend chunk пришла информация; quote является точной подстрокой этого chunk, которую можно проверить.
@@ -138,7 +183,7 @@ docker compose ps
 
 Проверка: `curl http://localhost:8000/health`.
 
-SQLite chat history находится в `data/rag.db`. Она содержит `chats`, `messages`, `message_sources` и `message_quotes`; история отправляет DeepSeek только последние `CHAT_HISTORY_MESSAGES=10` сообщений. Additive startup migration сохраняет старые чаты, а для старых сообщений quotes остаются пустыми и не генерируются задним числом.
+SQLite chat history находится в `data/rag.db`. Она содержит `chats`, `messages`, `message_sources`, `message_quotes` и `chat_task_state`; история отправляет DeepSeek только последние `CHAT_HISTORY_MESSAGES=10` сообщений. `TASK_STATE_ENABLED=true` включает память, `TASK_STATE_MODEL=deepseek-flash` выбирает модель updater. Additive startup migration сохраняет старые чаты, а отсутствующий у legacy chat state читается как пустой.
 
 ## Web UI
 
@@ -149,6 +194,7 @@ Vanilla JavaScript UI поддерживает:
 - friendly model selector DeepSeek Flash / DeepSeek V4 Pro;
 - fixed / structural strategy, candidate Top-K and final Top-K;
 - отдельные Answer, Sources и Quotes для grounded WITH RAG ответов;
+- Task Memory panel с goal, clarifications, constraints, terms, decisions и open questions, обновляемая без reload;
 - нормальный UI state «Недостаточно информации» для `insufficient_context`;
 - RAG details с context status, best similarity, threshold, source/quote counts, candidates и usage;
 - Day 22 compare (RAG / without RAG) and Day 23 compare (Baseline / Enhanced), including retrieval metadata.
@@ -169,7 +215,9 @@ Vanilla JavaScript UI поддерживает:
 {"chat_id":null,"question":"Как работает Weather MCP?","mode":"with_rag","retrieval_mode":"enhanced","model":"deepseek-flash","strategy":"structural","candidate_top_k":15,"final_top_k":5}
 ```
 
-Grounded response содержит `status`, `answer`, `sources` и `quotes`. У source обязательны backend-owned `source`, `file`, section metadata и `chunk_id`; quote связан с ним через `source_number` и `chunk_id`. WITHOUT RAG явно возвращает `mode=without_rag`, `sources=[]`, `quotes=[]`.
+Grounded response содержит `status`, `answer`, `sources`, `quotes` и актуальный `task_state`. У source обязательны backend-owned `source`, `file`, section metadata и `chunk_id`; quote связан с ним через `source_number` и `chunk_id`. WITHOUT RAG явно возвращает `mode=without_rag`, `sources=[]`, `quotes=[]`.
+
+`GET /api/chats/{chat_id}` возвращает chat metadata, messages с сохранёнными sources/quotes и chat-level `task_state`. Новый chat получает пустой state; удаление chat удаляет его state по foreign-key cascade.
 
 `POST /api/compare` запускает без persistence две ветки одного question с одной model:
 
@@ -221,10 +269,12 @@ Day 22 has ten documentation-grounded questions in `evaluation/day22_questions.j
 
 Day 24 reuses the ten documentation questions in `evaluation/day24_questions.json`. With Docker running, execute `python3 scripts/evaluate_day24.py`; it writes `evaluation/day24_results.md` and calculates sources coverage, quotes coverage and exact-substring quote validation. Semantic support is reviewed manually, not delegated to an LLM judge.
 
+Day 25 содержит два 12-turn сценария в `evaluation/day25_scenarios.json`: Weather MCP/Scheduler/Storage и FastAPI/Angular/API flow. Оба проверяют смену goal, ранний constraint за пределами history window, term mappings, retrieval на каждом turn, persisted state, sources и exact quotes. При поднятом Docker выполните `python3 scripts/evaluate_day25.py`; отчёт записывается в `evaluation/day25_results.md`. LLM-as-a-judge не используется.
+
 ## Tests
 
 ```bash
 pytest
 ```
 
-Tests use fake embeddings and `FakeLLMProvider`; they never call DeepSeek. They cover retrieval branching, context quality, exact quote validation, one controlled repair, weak-context short-circuit, source/quote SQLite persistence and primary FastAPI endpoints.
+Tests use fake embeddings and `FakeLLMProvider`; they never call DeepSeek. They cover task-state update/fail-open behavior, persistence and chat isolation, context-aware retrieval, retrieval on every RAG turn, old constraints outside recent history, grounding, weak-context short-circuit and primary FastAPI endpoints.

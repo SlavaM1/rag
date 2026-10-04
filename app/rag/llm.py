@@ -51,7 +51,9 @@ class LLMResponse:
 
 
 class LLMProvider(Protocol):
-    async def generate(self, messages: list[dict[str, str]], model: str) -> LLMResponse:
+    async def generate(
+        self, messages: list[dict[str, str]], model: str, json_mode: bool = False
+    ) -> LLMResponse:
         """Generate one non-streaming Chat Completions response."""
 
 
@@ -65,7 +67,9 @@ class DeepSeekProvider:
         self.max_tokens = settings.deepseek_max_tokens
         self.timeout_seconds = settings.deepseek_timeout_seconds
 
-    async def generate(self, messages: list[dict[str, str]], model: str) -> LLMResponse:
+    async def generate(
+        self, messages: list[dict[str, str]], model: str, json_mode: bool = False
+    ) -> LLMResponse:
         if not self.api_key:
             raise LLMConfigurationError("DEEPSEEK_API_KEY is not configured")
 
@@ -77,6 +81,8 @@ class DeepSeekProvider:
             # Keep baseline and RAG comparable: no hidden reasoning-token budget.
             "thinking": {"type": "disabled"},
         }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
         try:
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
                 response = await client.post(

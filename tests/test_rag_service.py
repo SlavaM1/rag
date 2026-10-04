@@ -4,8 +4,10 @@ from dataclasses import replace
 
 from app.rag.chat_repository import ChatRepository
 from app.rag.config import Settings
+from app.rag.context_quality import ContextQualityChecker
 from app.rag.llm import LLMResponse
 from app.rag.rag_service import AnswerStatus, ChatMode, DeepSeekModel, RAGService, RetrievalMode
+from app.rag.task_state import TaskState, TaskStateUpdate
 
 
 class StubSearchService:
@@ -26,7 +28,7 @@ class FakeLLMProvider:
     def __init__(self):
         self.calls = []
 
-    async def generate(self, messages, model):
+    async def generate(self, messages, model, json_mode=False):
         self.calls.append((messages, model))
         content = "Fake answer"
         if "CONTEXT" in messages[0]["content"]:
@@ -42,8 +44,8 @@ class FakeRewriter:
         self.rewritten = rewritten
         self.calls = []
 
-    async def rewrite(self, question):
-        self.calls.append(question)
+    async def rewrite(self, question, conversational_context=None):
+        self.calls.append((question, conversational_context))
         return self.rewritten
 
 
@@ -51,7 +53,7 @@ class RepairingLLMProvider:
     def __init__(self):
         self.calls = []
 
-    async def generate(self, messages, model):
+    async def generate(self, messages, model, json_mode=False):
         self.calls.append((messages, model))
         quote = "Invented quote" if len(self.calls) == 1 else "Weather MCP exposes current weather."
         return LLMResponse(json.dumps({
@@ -72,6 +74,17 @@ class FakeReranker:
         return list(reversed(chunks))
 
 
+class FakeTaskStateUpdater:
+    def __init__(self, state=None):
+        self.state = state
+        self.calls = []
+
+    async def update(self, current, user_message, recent_history):
+        self.calls.append((current, user_message, recent_history))
+        state = self.state or current
+        return TaskStateUpdate(state, state != current)
+
+
 def make_settings(tmp_path):
     return Settings(
         tmp_path / "docs", tmp_path / "data", "fake", 100, 10, 200, 20, 5, 20, 1000,
@@ -86,7 +99,11 @@ def make_service(tmp_path):
     provider = FakeLLMProvider()
     repository = ChatRepository(settings.chat_database_path)
     rewriter, reranker = FakeRewriter(), FakeReranker()
-    return RAGService(settings, search, provider, repository, query_rewriter=rewriter, reranker=reranker), search, provider, repository
+    updater = FakeTaskStateUpdater()
+    return RAGService(
+        settings, search, provider, repository, query_rewriter=rewriter, reranker=reranker,
+        task_state_updater=updater,
+    ), search, provider, repository
 
 
 def test_without_rag_does_not_retrieve(tmp_path):
@@ -132,6 +149,8 @@ def test_enhanced_rewrites_retrieves_filters_reranks_and_answers_original_questi
 
     assert search.calls == [("Weather MCP forecast", "structural", 3)]
     assert result.rewritten_query == "Weather MCP forecast"
+    assert service.query_rewriter.calls[0][0] == "А weather как прогноз получает?"
+    assert "CURRENT QUESTION" in service.query_rewriter.calls[0][1]
     assert result.retrieval["candidates_found"] == 1
     assert provider.calls[-1][0][-1]["content"] == "А weather как прогноз получает?"
     assert result.sources[0]["rerank_score"] == 1.0
@@ -196,3 +215,50 @@ def test_chat_history_and_sources_persist_in_sqlite(tmp_path):
     assert assistant["quotes"] == result.quotes
     assert assistant["retrieval_mode"] == "enhanced"
     assert assistant["rewritten_query"] == "Weather MCP forecast"
+    assert stored["task_state"] == TaskState().model_dump(mode="json")
+
+
+def test_retrieval_runs_for_every_conversational_rag_turn(tmp_path):
+    service, search, _, _ = make_service(tmp_path)
+
+    chat_id, _ = asyncio.run(service.ask("Weather?", ChatMode.WITH_RAG, DeepSeekModel.FLASH))
+    asyncio.run(service.ask("А где он хранится?", ChatMode.WITH_RAG, DeepSeekModel.FLASH, chat_id=chat_id))
+
+    assert len(search.calls) == 2
+    assert len(service.query_rewriter.calls) == 2
+
+
+def test_task_state_constraint_is_used_after_it_leaves_recent_history(tmp_path):
+    service, _, provider, _ = make_service(tmp_path)
+    state = TaskState(
+        goal="Понять scheduler storage",
+        constraints=["рассматривать только backend"],
+        terms={"scheduler": "APScheduler"},
+    )
+
+    result = asyncio.run(service.generate(
+        "А где он хранится?", ChatMode.WITH_RAG, DeepSeekModel.FLASH,
+        history=[{"role": "user", "content": "Поздний вопрос без старого ограничения"}],
+        task_state=state,
+    ))
+
+    rewrite_context = service.query_rewriter.calls[0][1]
+    assert "рассматривать только backend" in rewrite_context
+    assert "scheduler = APScheduler" in rewrite_context
+    assert "Task State describes user goals" in provider.calls[-1][0][0]["content"]
+    assert result.retrieval["constraints_used"] == ["рассматривать только backend"]
+
+
+def test_task_state_does_not_bypass_weak_context_guard(tmp_path):
+    service, _, provider, _ = make_service(tmp_path)
+    service.context_quality_checker = ContextQualityChecker(0.95)
+
+    result = asyncio.run(service.generate(
+        "В какой таблице?", ChatMode.WITH_RAG, DeepSeekModel.FLASH,
+        task_state=TaskState(goal="Проверить PostgreSQL", decisions=["Пользователь предполагает PostgreSQL"]),
+    ))
+
+    assert result.status == AnswerStatus.INSUFFICIENT_CONTEXT
+    assert result.sources == []
+    assert result.quotes == []
+    assert provider.calls == []

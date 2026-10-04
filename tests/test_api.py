@@ -7,6 +7,7 @@ from app.rag.chat_repository import ChatRepository
 from app.rag.config import Settings
 from app.rag.llm import LLMResponse
 from app.rag.rag_service import RAGService
+from app.rag.task_state import TaskStateUpdate
 
 
 class StubSearchService:
@@ -24,7 +25,7 @@ class FakeLLMProvider:
     def __init__(self):
         self.calls = []
 
-    async def generate(self, messages, model):
+    async def generate(self, messages, model, json_mode=False):
         self.calls.append((messages, model))
         content = "Generated answer"
         if "CONTEXT" in messages[0]["content"]:
@@ -36,7 +37,7 @@ class FakeLLMProvider:
 
 
 class FakeRewriter:
-    async def rewrite(self, question):
+    async def rewrite(self, question, conversational_context=None):
         return question
 
 
@@ -48,6 +49,11 @@ class FakeReranker:
         return chunks
 
 
+class NoopTaskStateUpdater:
+    async def update(self, current, user_message, recent_history):
+        return TaskStateUpdate(current, False)
+
+
 def chat_client(tmp_path, score=0.9):
     settings = Settings(
         tmp_path / "docs", tmp_path / "data", "fake", 100, 10, 200, 20, 5, 20, 1000,
@@ -55,7 +61,10 @@ def chat_client(tmp_path, score=0.9):
         0.2, 100, 10.0, 10, tmp_path / "rag.db",
     )
     repository = ChatRepository(settings.chat_database_path)
-    rag_service = RAGService(settings, StubSearchService(score), FakeLLMProvider(), repository, query_rewriter=FakeRewriter(), reranker=FakeReranker())
+    rag_service = RAGService(
+        settings, StubSearchService(score), FakeLLMProvider(), repository,
+        query_rewriter=FakeRewriter(), reranker=FakeReranker(), task_state_updater=NoopTaskStateUpdater(),
+    )
     return TestClient(create_app(rag_service.search_service, rag_service, repository))
 
 
@@ -86,8 +95,12 @@ def test_chat_compare_and_history_apis(tmp_path):
     assert response.json()["sources"][0]["chunk_id"] == "chunk"
     assert response.json()["sources"][0]["source"] == "docs/rag/example.md"
     assert response.json()["quotes"][0]["quote"] == "exact source text"
+    assert set(response.json()["task_state"]) == {
+        "goal", "clarifications", "constraints", "terms", "decisions", "open_questions"
+    }
     history = client.get(f"/api/chats/{chat_id}")
     assert [message["role"] for message in history.json()["messages"]] == ["user", "assistant"]
+    assert history.json()["task_state"] == response.json()["task_state"]
     comparison = client.post("/api/compare", json={"question": "Weather?", "model": "deepseek-v4-pro"})
     assert comparison.status_code == 200
     assert comparison.json()["without_rag"]["model"] == comparison.json()["with_rag"]["model"]

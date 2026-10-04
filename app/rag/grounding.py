@@ -52,7 +52,9 @@ class GroundingValidator:
             if len(quote) > 600:
                 raise GroundingValidationError("citation quote is too long")
             if quote not in str(source["text"]):
-                raise GroundingValidationError("citation quote is not present in its source chunk")
+                raise GroundingValidationError(
+                    f"citation quote for SOURCE {source_number} is not present in that source chunk"
+                )
             if f"[{source_number}]" not in answer:
                 raise GroundingValidationError("answer does not reference a cited source")
 

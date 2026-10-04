@@ -1,0 +1,106 @@
+[
+  {
+    "id": "weather-scheduler-storage",
+    "title": "Weather MCP, scheduler and storage",
+    "final_expectations": {
+      "goal_contains": ["scheduler", "storage"],
+      "constraints_contain": ["frontend"],
+      "terms": {"погодник": "Weather MCP", "шедулер": "APScheduler"}
+    },
+    "turns": [
+      {
+        "message": "Наша цель — понять Weather MCP целиком. Каково его назначение?",
+        "expected_goal_contains": "Weather MCP"
+      },
+      {
+        "message": "Дальше называю Weather MCP «погодник». Какие weather tools он предоставляет?",
+        "expected_term": {"погодник": "Weather MCP"}
+      },
+      {
+        "message": "Frontend не рассматриваем, интересует только backend. Как погодник связан с backend-агентом?",
+        "expected_constraint_contains": "frontend"
+      },
+      {
+        "message": "А откуда он получает текущую погоду и как нормализует ответ?"
+      },
+      {
+        "message": "Теперь сужаем цель: понять flow scheduler → weather → storage. Что запускает периодический сбор?",
+        "expected_goal_contains": "scheduler"
+      },
+      {
+        "message": "Под «шедулером» дальше имею в виду APScheduler periodic job. Как он регистрируется?",
+        "expected_term": {"шедулер": "APScheduler"}
+      },
+      {
+        "message": "Когда шедулер срабатывает, какой метод получает данные погоды?"
+      },
+      {
+        "message": "Где погодник сохраняет полученный им результат периодического запуска?"
+      },
+      {
+        "message": "Как называется таблица с этими samples и какие поля она хранит?"
+      },
+      {
+        "message": "Какое решение по persistence принято: SQLite или PostgreSQL, и где лежит файл?"
+      },
+      {
+        "message": "Что происходит с активными задачами после restart и воспроизводятся ли пропущенные запуски?"
+      },
+      {
+        "message": "Возвращаясь к нашей текущей цели и не затрагивая frontend: опиши полный путь от шедулера до сохранённого sample."
+      }
+    ]
+  },
+  {
+    "id": "backend-api-data-flow",
+    "title": "FastAPI, Angular and API data flow",
+    "final_expectations": {
+      "goal_contains": ["backend", "persistence"],
+      "constraints_contain": ["backend"],
+      "terms": {"бэк": "FastAPI backend", "клиент": "Angular App"}
+    },
+    "turns": [
+      {
+        "message": "Наша цель — понять полный путь сообщения от Angular до ответа LLM. Как выглядит общий flow?",
+        "expected_goal_contains": "Angular"
+      },
+      {
+        "message": "Дальше слово «клиент» означает Angular App. Какой метод отправляет сообщение?",
+        "expected_term": {"клиент": "Angular App"}
+      },
+      {
+        "message": "А «бэк» означает FastAPI backend. Какой endpoint принимает запрос клиента?",
+        "expected_term": {"бэк": "FastAPI backend"}
+      },
+      {
+        "message": "Пока рассматриваем только backend-обработку, без деталей CSS и UI. Как handler загружает историю?",
+        "expected_constraint_contains": "backend"
+      },
+      {
+        "message": "Что бэк передаёт ChatAgent перед первым LLM call?"
+      },
+      {
+        "message": "Как выполняется discovery MCP tools в этом flow?"
+      },
+      {
+        "message": "Что происходит, если LLM вернул tool call погоды?"
+      },
+      {
+        "message": "Как результат tool возвращается модели для финального текста?"
+      },
+      {
+        "message": "Теперь сужаем цель до backend persistence после финального ответа. Что именно сохраняется?",
+        "expected_goal_contains": "persistence"
+      },
+      {
+        "message": "Какая база хранит chat history и кто управляет её schema?"
+      },
+      {
+        "message": "Сохраняются ли user и assistant сообщения одной операцией и как меняется title?"
+      },
+      {
+        "message": "С учётом нашей новой цели и ограничения опиши путь на бэке от принятого сообщения до persisted exchange."
+      }
+    ]
+  }
+]

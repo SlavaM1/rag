@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import sqlite3
 import json
+import logging
 from pathlib import Path
+
+from .task_state import TaskState
+
+
+logger = logging.getLogger(__name__)
 
 
 class ChatNotFoundError(ValueError):
@@ -68,6 +74,16 @@ class ChatRepository:
                 );
                 CREATE INDEX IF NOT EXISTS message_quotes_message_id_source
                     ON message_quotes(message_id, source_number, id);
+                CREATE TABLE IF NOT EXISTS chat_task_state (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER NOT NULL UNIQUE REFERENCES chats(id) ON DELETE CASCADE,
+                    goal TEXT,
+                    state_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    version INTEGER NOT NULL DEFAULT 0,
+                    updated_from_message_id INTEGER REFERENCES messages(id) ON DELETE SET NULL
+                );
                 """
             )
             # ALTER TABLE is additive, so existing Day 22 databases and conversations remain intact.
@@ -86,6 +102,7 @@ class ChatRepository:
     def create_chat(self, title: str = "New chat") -> dict[str, object]:
         with self._connect() as connection:
             cursor = connection.execute("INSERT INTO chats (title) VALUES (?)", (title,))
+            self._insert_empty_task_state(connection, int(cursor.lastrowid))
             return self._chat(connection, cursor.lastrowid)
 
     def list_chats(self) -> list[dict[str, object]]:
@@ -98,6 +115,9 @@ class ChatRepository:
             chat = self._chat(connection, chat_id)
             messages = connection.execute("SELECT * FROM messages WHERE chat_id = ? ORDER BY id", (chat_id,)).fetchall()
             chat["messages"] = [self._message(connection, row) for row in messages]
+            state, version = self._task_state(connection, chat_id)
+            chat["task_state"] = state.model_dump(mode="json")
+            chat["task_state_version"] = version
             return chat
 
     def delete_chat(self, chat_id: int) -> None:
@@ -124,6 +144,11 @@ class ChatRepository:
             self._touch(connection, chat_id)
             return int(cursor.lastrowid)
 
+    def get_task_state(self, chat_id: int) -> tuple[TaskState, int]:
+        with self._connect() as connection:
+            self._chat(connection, chat_id)
+            return self._task_state(connection, chat_id)
+
     def add_assistant_message(
         self,
         chat_id: int,
@@ -138,6 +163,8 @@ class ChatRepository:
         retrieval: dict[str, object] | None = None,
         status: str = "answered",
         quotes: list[dict[str, object]] | None = None,
+        task_state: TaskState | None = None,
+        updated_from_message_id: int | None = None,
     ) -> int:
         with self._connect() as connection:
             self._chat(connection, chat_id)
@@ -187,6 +214,8 @@ class ChatRepository:
                     for quote in quotes or []
                 ],
             )
+            if task_state is not None:
+                self._save_task_state(connection, chat_id, task_state, updated_from_message_id)
             self._touch(connection, chat_id)
             return message_id
 
@@ -204,6 +233,47 @@ class ChatRepository:
         columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
         if name not in columns:
             connection.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
+
+    @staticmethod
+    def _insert_empty_task_state(connection: sqlite3.Connection, chat_id: int) -> None:
+        state = TaskState()
+        connection.execute(
+            "INSERT OR IGNORE INTO chat_task_state (chat_id, goal, state_json) VALUES (?, ?, ?)",
+            (chat_id, state.goal, state.model_dump_json()),
+        )
+
+    @staticmethod
+    def _save_task_state(
+        connection: sqlite3.Connection,
+        chat_id: int,
+        state: TaskState,
+        updated_from_message_id: int | None,
+    ) -> None:
+        connection.execute(
+            """INSERT INTO chat_task_state
+            (chat_id, goal, state_json, version, updated_from_message_id)
+            VALUES (?, ?, ?, 1, ?)
+            ON CONFLICT(chat_id) DO UPDATE SET
+                goal = excluded.goal,
+                state_json = excluded.state_json,
+                version = chat_task_state.version + 1,
+                updated_from_message_id = excluded.updated_from_message_id,
+                updated_at = CURRENT_TIMESTAMP""",
+            (chat_id, state.goal, state.model_dump_json(), updated_from_message_id),
+        )
+
+    @staticmethod
+    def _task_state(connection: sqlite3.Connection, chat_id: int) -> tuple[TaskState, int]:
+        row = connection.execute(
+            "SELECT state_json, version FROM chat_task_state WHERE chat_id = ?", (chat_id,)
+        ).fetchone()
+        if row is None:
+            return TaskState(), 0
+        try:
+            return TaskState.model_validate_json(row["state_json"]), int(row["version"])
+        except Exception:
+            logger.warning("Invalid task state for chat_id=%s; using empty state", chat_id, exc_info=True)
+            return TaskState(), int(row["version"])
 
     @staticmethod
     def _chat(connection: sqlite3.Connection, chat_id: int) -> dict[str, object]:

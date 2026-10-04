@@ -117,6 +117,7 @@ def _result_payload(result: object) -> dict[str, object]:
         "rewritten_query": result.rewritten_query,
         "retrieval": result.retrieval,
         "timings": result.timings,
+        "task_state": result.task_state,
     }
 
 

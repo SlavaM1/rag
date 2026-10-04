@@ -29,3 +29,11 @@ def test_day22_schema_is_migrated_without_removing_existing_chat(tmp_path):
     assert {"source", "similarity_score", "rerank_score", "original_rank", "final_rank", "passed_threshold"} <= source_columns
     assert quote_table is not None
     assert chat["messages"][0]["quotes"] == []
+    assert chat["task_state"] == {
+        "goal": None,
+        "clarifications": [],
+        "constraints": [],
+        "terms": {},
+        "decisions": [],
+        "open_questions": [],
+    }

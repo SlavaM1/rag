@@ -38,6 +38,8 @@ class Settings:
     rerank_enabled: bool = True
     rerank_model: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
     min_context_similarity: float = 0.5
+    task_state_enabled: bool = True
+    task_state_model: str = "deepseek-flash"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -79,6 +81,8 @@ class Settings:
             rerank_enabled=_env_bool("RAG_RERANK_ENABLED", True),
             rerank_model=os.getenv("RAG_RERANK_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"),
             min_context_similarity=float(os.getenv("RAG_MIN_CONTEXT_SIMILARITY", "0.5")),
+            task_state_enabled=_env_bool("TASK_STATE_ENABLED", True),
+            task_state_model=os.getenv("TASK_STATE_MODEL", "deepseek-flash"),
         )
 
     def index_path(self, strategy: str) -> Path:

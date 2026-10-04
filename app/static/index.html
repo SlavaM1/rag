@@ -9,7 +9,7 @@
   <body>
     <main class="app-shell">
       <aside class="sidebar">
-        <p class="eyebrow">DAY 24 / GROUNDED ANSWERS</p>
+        <p class="eyebrow">DAY 25 / CONVERSATIONAL RAG</p>
         <h1>RAG Chat</h1>
         <button id="new-chat" class="new-chat" type="button">+ Новый чат</button>
         <div class="side-heading"><span>Chats</span><button id="refresh-chats" class="text-button" type="button">Обновить</button></div>
@@ -19,8 +19,8 @@
       <section class="workspace">
         <header class="workspace-header">
           <div>
-            <p class="eyebrow">SOURCES + EXACT QUOTES</p>
-            <h2>Ответ, который можно проверить</h2>
+            <p class="eyebrow">HISTORY + TASK MEMORY + SOURCES</p>
+            <h2>Связный и проверяемый диалог</h2>
           </div>
           <p class="legend"><span class="dot"></span>Context is retrieved only in WITH RAG</p>
         </header>
@@ -57,6 +57,10 @@
         </form>
 
         <p id="status" class="status" aria-live="polite"></p>
+        <details class="task-memory" open>
+          <summary>Task Memory</summary>
+          <div id="task-memory-content" class="task-memory-content"></div>
+        </details>
         <section id="conversation" class="conversation" aria-live="polite">
           <div class="empty-state">Начните новый чат или выберите сохранённый. Каждый успешный WITH RAG ответ содержит источники и проверенные цитаты.</div>
         </section>
