@@ -134,13 +134,32 @@ async function loadChats() {
   const payload = await request("/api/chats");
   chatList.replaceChildren();
   payload.chats.forEach((chat) => {
+    const row = document.createElement("div");
+    row.className = `chat-row${chat.id === activeChatId ? " active" : ""}`;
     const item = document.createElement("button");
     item.type = "button";
-    item.className = `chat-item${chat.id === activeChatId ? " active" : ""}`;
+    item.className = "chat-item";
     item.textContent = chat.title;
     item.addEventListener("click", () => loadChat(chat.id));
-    chatList.append(item);
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "delete-chat";
+    deleteButton.textContent = "Удалить";
+    deleteButton.setAttribute("aria-label", `Удалить чат «${chat.title}»`);
+    deleteButton.addEventListener("click", () => deleteChat(chat).catch(showError));
+    row.append(item, deleteButton);
+    chatList.append(row);
   });
+}
+
+async function deleteChat(chat) {
+  if (!window.confirm(`Удалить чат «${chat.title}»?`)) return;
+  await request(`/api/chats/${chat.id}`, { method: "DELETE" });
+  if (activeChatId === chat.id) {
+    activeChatId = null;
+    showConversation([]);
+  }
+  await loadChats();
 }
 
 async function loadChat(chatId) {
