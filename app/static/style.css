@@ -36,9 +36,18 @@ h2 { font-size: clamp(1.7rem, 3vw, 2.6rem); margin: 0; }
 .assistant-message { background: #fffdf8; border-top: 3px solid #e36e43; margin-right: 4%; }
 .message-head { align-items: baseline; display: flex; gap: 12px; justify-content: space-between; }
 .message-head strong { font-size: 1.05rem; }.model { color: #486158; font-size: .8rem; font-weight: 700; }
-.message-content { line-height: 1.6; margin-top: 14px; white-space: pre-wrap; }
+.message h3 { color: #486158; font-size: .72rem; letter-spacing: .12em; margin: 20px 0 8px; text-transform: uppercase; }
+.message-content { line-height: 1.6; white-space: pre-wrap; }
+.insufficient-context { background: #fff2d8; border-left: 4px solid #d58b2b; display: grid; gap: 6px; margin: 14px 0; padding: 13px 15px; }
+.insufficient-context[hidden], [hidden] { display: none; }
+.insufficient-context strong { color: #7a4815; }
+.insufficient-context span { color: #674f32; font-size: .9rem; }
 details { margin-top: 16px; } summary { color: #285249; cursor: pointer; font-weight: 800; }
-.source-card { border-left: 3px solid #9dc6b4; margin: 12px 0; padding: 0 0 0 12px; }.source-card p, .rag-details div { font: .78rem/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+.sources, .quotes { display: grid; gap: 10px; }
+.source-card { background: #f3f7f3; border-left: 3px solid #61927d; padding: 10px 12px; }.source-card p, .rag-details div { font: .78rem/1.5 ui-monospace, monospace; margin: 0; white-space: pre-wrap; }
+.quote-card { border: 1px solid #d9d1c3; margin: 0; padding: 12px 14px; }
+.quote-card figcaption { color: #52665d; font-size: .75rem; font-weight: 800; }
+.quote-card blockquote { font: italic .95rem/1.55 Georgia, serif; margin: 8px 0 0; white-space: pre-wrap; }
 pre { background: #f1efe8; font: .78rem/1.5 ui-monospace, monospace; max-height: 220px; overflow: auto; padding: 10px; white-space: pre-wrap; }
 .composer { background: #fffdf8; border-top: 3px solid #193b35; padding: 16px; }.composer > label { display: block; font-size: .8rem; font-weight: 800; margin-bottom: 6px; }
 textarea { border: 1px solid #9aaba2; min-height: 86px; padding: 10px; resize: vertical; width: 100%; }.composer-actions { display: flex; gap: 10px; margin-top: 10px; }

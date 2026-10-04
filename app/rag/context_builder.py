@@ -10,6 +10,7 @@ class ContextBuilder:
                 "\n".join(
                     [
                         f"[SOURCE {source['number']}]",
+                        f"Source path: {source['source']}",
                         f"File: {source['file']}",
                         f"Section: {source['section']}",
                         f"Section path: {source['section_path']}",

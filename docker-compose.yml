@@ -4,7 +4,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      - "${RAG_WEB_PORT:-8000}:8000"
     volumes:
       - ./data:/app/data
     healthcheck:

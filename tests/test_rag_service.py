@@ -1,10 +1,11 @@
+import json
 import asyncio
 from dataclasses import replace
 
 from app.rag.chat_repository import ChatRepository
 from app.rag.config import Settings
 from app.rag.llm import LLMResponse
-from app.rag.rag_service import ChatMode, DeepSeekModel, RAGService, RetrievalMode
+from app.rag.rag_service import AnswerStatus, ChatMode, DeepSeekModel, RAGService, RetrievalMode
 
 
 class StubSearchService:
@@ -17,7 +18,7 @@ class StubSearchService:
             "score": 0.91,
             "chunk_id": "weather-1",
             "text": "Weather MCP exposes current weather.",
-            "metadata": {"file": "08-weather-mcp.md", "section": "Назначение", "section_path": "Weather MCP > Назначение"},
+            "metadata": {"source": "docs/rag/08-weather-mcp.md", "file": "08-weather-mcp.md", "section": "Назначение", "section_path": "Weather MCP > Назначение"},
         }]
 
 
@@ -27,7 +28,13 @@ class FakeLLMProvider:
 
     async def generate(self, messages, model):
         self.calls.append((messages, model))
-        return LLMResponse("Fake answer", model, 11, 7, 18, "stop")
+        content = "Fake answer"
+        if "CONTEXT" in messages[0]["content"]:
+            content = json.dumps({
+                "answer": "Weather MCP exposes current weather [1].",
+                "citations": [{"source_number": 1, "quote": "Weather MCP exposes current weather."}],
+            })
+        return LLMResponse(content, model, 11, 7, 18, "stop")
 
 
 class FakeRewriter:
@@ -38,6 +45,19 @@ class FakeRewriter:
     async def rewrite(self, question):
         self.calls.append(question)
         return self.rewritten
+
+
+class RepairingLLMProvider:
+    def __init__(self):
+        self.calls = []
+
+    async def generate(self, messages, model):
+        self.calls.append((messages, model))
+        quote = "Invented quote" if len(self.calls) == 1 else "Weather MCP exposes current weather."
+        return LLMResponse(json.dumps({
+            "answer": "Weather MCP exposes current weather [1].",
+            "citations": [{"source_number": 1, "quote": quote}],
+        }), model, 5, 5, 10, "stop")
 
 
 class FakeReranker:
@@ -76,6 +96,8 @@ def test_without_rag_does_not_retrieve(tmp_path):
 
     assert search.calls == []
     assert result.sources == []
+    assert result.quotes == []
+    assert result.status == AnswerStatus.ANSWERED
     assert provider.calls[0][1] == "deepseek-flash"
     assert "CONTEXT" not in provider.calls[0][0][0]["content"]
 
@@ -89,9 +111,15 @@ def test_with_rag_retrieves_and_includes_structured_context(tmp_path):
     assert service.query_rewriter.calls == []
     assert service.reranker.calls == []
     assert result.sources[0]["file"] == "08-weather-mcp.md"
+    assert result.sources[0]["source"] == "docs/rag/08-weather-mcp.md"
+    assert result.quotes[0]["quote"] == "Weather MCP exposes current weather."
+    assert result.status == AnswerStatus.ANSWERED
     prompt = provider.calls[0][0][0]["content"]
     assert "[SOURCE 1]" in prompt
     assert "weather-1" in prompt
+    assert "только на основании CONTEXT" in prompt
+    assert "Не придумывай источники и цитаты" in prompt
+    assert "source_number" in prompt
 
 
 def test_enhanced_rewrites_retrieves_filters_reranks_and_answers_original_question(tmp_path):
@@ -109,7 +137,7 @@ def test_enhanced_rewrites_retrieves_filters_reranks_and_answers_original_questi
     assert result.sources[0]["rerank_score"] == 1.0
 
 
-def test_enhanced_all_filtered_gives_llm_an_explicit_no_context_instruction(tmp_path):
+def test_enhanced_all_filtered_returns_controlled_response_without_answer_generation(tmp_path):
     service, search, provider, _ = make_service(tmp_path)
     service.settings = replace(service.settings, similarity_threshold=0.95)
 
@@ -119,8 +147,26 @@ def test_enhanced_all_filtered_gives_llm_an_explicit_no_context_instruction(tmp_
 
     assert search.calls == [("Weather MCP forecast", "structural", 15)]
     assert result.sources == []
+    assert result.quotes == []
+    assert result.status == AnswerStatus.INSUFFICIENT_CONTEXT
     assert result.retrieval["after_filter"] == 0
-    assert "не найдено достаточно релевантной" in provider.calls[-1][0][0]["content"]
+    assert result.retrieval["context_status"] == "insufficient"
+    assert "Уточните" in result.answer
+    assert provider.calls == []
+
+
+def test_invalid_quote_gets_one_controlled_repair_attempt(tmp_path):
+    service, _, _, _ = make_service(tmp_path)
+    provider = RepairingLLMProvider()
+    service.llm_provider = provider
+
+    result = asyncio.run(service.generate(
+        "Weather?", ChatMode.WITH_RAG, DeepSeekModel.FLASH, retrieval_mode=RetrievalMode.BASELINE
+    ))
+
+    assert len(provider.calls) == 2
+    assert result.quotes[0]["quote"] == "Weather MCP exposes current weather."
+    assert result.usage["total_tokens"] == 20
 
 
 def test_compare_uses_the_same_model_for_both_branches(tmp_path):
@@ -146,5 +192,7 @@ def test_chat_history_and_sources_persist_in_sqlite(tmp_path):
     assert assistant["model"] == "deepseek-flash"
     assert assistant["usage"]["total_tokens"] == 18
     assert assistant["sources"][0]["chunk_id"] == result.sources[0]["chunk_id"]
+    assert assistant["status"] == "answered"
+    assert assistant["quotes"] == result.quotes
     assert assistant["retrieval_mode"] == "enhanced"
     assert assistant["rewritten_query"] == "Weather MCP forecast"

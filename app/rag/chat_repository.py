@@ -41,7 +41,8 @@ class ChatRepository:
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     prompt_tokens INTEGER,
                     completion_tokens INTEGER,
-                    total_tokens INTEGER
+                    total_tokens INTEGER,
+                    status TEXT CHECK(status IN ('answered', 'insufficient_context'))
                 );
                 CREATE INDEX IF NOT EXISTS messages_chat_id_created_at ON messages(chat_id, id);
                 CREATE TABLE IF NOT EXISTS message_sources (
@@ -50,12 +51,23 @@ class ChatRepository:
                     rank INTEGER NOT NULL,
                     chunk_id TEXT NOT NULL,
                     score REAL NOT NULL,
+                    source TEXT,
                     file TEXT NOT NULL,
                     section TEXT NOT NULL,
                     section_path TEXT NOT NULL,
                     text TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS message_sources_message_id_rank ON message_sources(message_id, rank);
+                CREATE TABLE IF NOT EXISTS message_quotes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+                    source_number INTEGER NOT NULL,
+                    chunk_id TEXT NOT NULL,
+                    quote TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS message_quotes_message_id_source
+                    ON message_quotes(message_id, source_number, id);
                 """
             )
             # ALTER TABLE is additive, so existing Day 22 databases and conversations remain intact.
@@ -63,6 +75,8 @@ class ChatRepository:
             self._add_column(connection, "messages", "original_question TEXT")
             self._add_column(connection, "messages", "rewritten_query TEXT")
             self._add_column(connection, "messages", "retrieval_metadata TEXT")
+            self._add_column(connection, "messages", "status TEXT")
+            self._add_column(connection, "message_sources", "source TEXT")
             self._add_column(connection, "message_sources", "similarity_score REAL")
             self._add_column(connection, "message_sources", "rerank_score REAL")
             self._add_column(connection, "message_sources", "original_rank INTEGER")
@@ -122,32 +136,36 @@ class ChatRepository:
         original_question: str | None = None,
         rewritten_query: str | None = None,
         retrieval: dict[str, object] | None = None,
+        status: str = "answered",
+        quotes: list[dict[str, object]] | None = None,
     ) -> int:
         with self._connect() as connection:
             self._chat(connection, chat_id)
             cursor = connection.execute(
                 """INSERT INTO messages
                 (chat_id, role, content, mode, model, prompt_tokens, completion_tokens, total_tokens,
-                 retrieval_mode, original_question, rewritten_query, retrieval_metadata)
-                VALUES (?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 retrieval_mode, original_question, rewritten_query, retrieval_metadata, status)
+                VALUES (?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     chat_id, content, mode, model, usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"],
                     retrieval_mode, original_question, rewritten_query,
                     json.dumps(retrieval, ensure_ascii=False) if retrieval is not None else None,
+                    status,
                 ),
             )
             message_id = int(cursor.lastrowid)
             connection.executemany(
                 """INSERT INTO message_sources
-                (message_id, rank, chunk_id, score, file, section, section_path, text, similarity_score,
-                 rerank_score, original_rank, final_rank, passed_threshold)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (message_id, rank, chunk_id, score, source, file, section, section_path, text, similarity_score,
+                  rerank_score, original_rank, final_rank, passed_threshold)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 [
                     (
                         message_id,
                         source["number"],
                         source["chunk_id"],
                         source["score"],
+                        source["source"],
                         source["file"],
                         source["section"],
                         source["section_path"],
@@ -159,6 +177,14 @@ class ChatRepository:
                         int(source["passed_threshold"]) if source.get("passed_threshold") is not None else None,
                     )
                     for source in sources
+                ],
+            )
+            connection.executemany(
+                """INSERT INTO message_quotes (message_id, source_number, chunk_id, quote)
+                VALUES (?, ?, ?, ?)""",
+                [
+                    (message_id, quote["source_number"], quote["chunk_id"], quote["quote"])
+                    for quote in quotes or []
                 ],
             )
             self._touch(connection, chat_id)
@@ -190,11 +216,36 @@ class ChatRepository:
     def _message(connection: sqlite3.Connection, row: sqlite3.Row) -> dict[str, object]:
         message = dict(row)
         sources = connection.execute(
-            """SELECT rank, chunk_id, score, file, section, section_path, text, similarity_score, rerank_score,
+            """SELECT rank, chunk_id, score, source, file, section, section_path, text, similarity_score, rerank_score,
                original_rank, final_rank, passed_threshold FROM message_sources WHERE message_id = ? ORDER BY rank""",
             (message["id"],),
         ).fetchall()
-        message["sources"] = [{"number": source["rank"], **dict(source)} for source in sources]
+        message["sources"] = []
+        for row_source in sources:
+            source = dict(row_source)
+            source["source"] = source["source"] or source["file"]
+            if source["passed_threshold"] is not None:
+                source["passed_threshold"] = bool(source["passed_threshold"])
+            message["sources"].append({"number": source["rank"], **source})
+        source_by_number = {source["number"]: source for source in message["sources"]}
+        quote_rows = connection.execute(
+            """SELECT source_number, chunk_id, quote FROM message_quotes
+            WHERE message_id = ? ORDER BY source_number, id""",
+            (message["id"],),
+        ).fetchall()
+        message["quotes"] = []
+        for quote_row in quote_rows:
+            quote = dict(quote_row)
+            source = source_by_number.get(quote["source_number"], {})
+            message["quotes"].append(
+                {
+                    **quote,
+                    "source": source.get("source", ""),
+                    "file": source.get("file", ""),
+                    "section": source.get("section", ""),
+                    "section_path": source.get("section_path", ""),
+                }
+            )
         message["usage"] = {
             "prompt_tokens": message.pop("prompt_tokens"),
             "completion_tokens": message.pop("completion_tokens"),

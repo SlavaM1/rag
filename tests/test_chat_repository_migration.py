@@ -22,5 +22,10 @@ def test_day22_schema_is_migrated_without_removing_existing_chat(tmp_path):
     with sqlite3.connect(database) as connection:
         message_columns = {row[1] for row in connection.execute("PRAGMA table_info(messages)")}
         source_columns = {row[1] for row in connection.execute("PRAGMA table_info(message_sources)")}
-    assert {"retrieval_mode", "original_question", "rewritten_query", "retrieval_metadata"} <= message_columns
-    assert {"similarity_score", "rerank_score", "original_rank", "final_rank"} <= source_columns
+        quote_table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'message_quotes'"
+        ).fetchone()
+    assert {"retrieval_mode", "original_question", "rewritten_query", "retrieval_metadata", "status"} <= message_columns
+    assert {"source", "similarity_score", "rerank_score", "original_rank", "final_rank", "passed_threshold"} <= source_columns
+    assert quote_table is not None
+    assert chat["messages"][0]["quotes"] == []

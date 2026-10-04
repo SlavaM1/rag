@@ -37,6 +37,7 @@ class Settings:
     filter_enabled: bool = True
     rerank_enabled: bool = True
     rerank_model: str = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+    min_context_similarity: float = 0.5
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -77,6 +78,7 @@ class Settings:
             filter_enabled=_env_bool("RAG_FILTER_ENABLED", True),
             rerank_enabled=_env_bool("RAG_RERANK_ENABLED", True),
             rerank_model=os.getenv("RAG_RERANK_MODEL", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"),
+            min_context_similarity=float(os.getenv("RAG_MIN_CONTEXT_SIMILARITY", "0.5")),
         )
 
     def index_path(self, strategy: str) -> Path:

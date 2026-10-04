@@ -9,7 +9,7 @@
   <body>
     <main class="app-shell">
       <aside class="sidebar">
-        <p class="eyebrow">DAY 23 / RETRIEVAL QUALITY</p>
+        <p class="eyebrow">DAY 24 / GROUNDED ANSWERS</p>
         <h1>RAG Chat</h1>
         <button id="new-chat" class="new-chat" type="button">+ Новый чат</button>
         <div class="side-heading"><span>Chats</span><button id="refresh-chats" class="text-button" type="button">Обновить</button></div>
@@ -19,8 +19,8 @@
       <section class="workspace">
         <header class="workspace-header">
           <div>
-            <p class="eyebrow">GROUNDING EXPERIMENT</p>
-            <h2>Один вопрос, две траектории</h2>
+            <p class="eyebrow">SOURCES + EXACT QUOTES</p>
+            <h2>Ответ, который можно проверить</h2>
           </div>
           <p class="legend"><span class="dot"></span>Context is retrieved only in WITH RAG</p>
         </header>
@@ -58,7 +58,7 @@
 
         <p id="status" class="status" aria-live="polite"></p>
         <section id="conversation" class="conversation" aria-live="polite">
-          <div class="empty-state">Начните новый чат или выберите сохранённый. Ответы WITH RAG будут содержать реальные chunks и ссылки на них.</div>
+          <div class="empty-state">Начните новый чат или выберите сохранённый. Каждый успешный WITH RAG ответ содержит источники и проверенные цитаты.</div>
         </section>
 
         <form id="question-form" class="composer">
@@ -75,8 +75,14 @@
     <template id="message-template">
       <article class="message">
         <div class="message-head"><strong class="role"></strong><span class="model"></span></div>
+        <h3 class="answer-title">Answer</h3>
+        <aside class="insufficient-context" hidden>
+          <strong>Недостаточно информации</strong>
+          <span>Retrieval не нашёл достаточно сильный контекст. Уточните вопрос или название компонента.</span>
+        </aside>
         <div class="message-content"></div>
-        <div class="sources"></div>
+        <section class="sources-section" hidden><h3>Sources</h3><div class="sources"></div></section>
+        <section class="quotes-section" hidden><h3>Quotes</h3><div class="quotes"></div></section>
         <details class="rag-details"><summary>RAG details</summary><div></div></details>
       </article>
     </template>

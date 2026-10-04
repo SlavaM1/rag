@@ -103,11 +103,13 @@ class CreateChatRequest(BaseModel):
 
 def _result_payload(result: object) -> dict[str, object]:
     return {
+        "status": result.status.value,
         "mode": result.mode.value,
         "retrieval_mode": result.retrieval_mode.value if result.retrieval_mode else None,
         "model": result.model,
         "answer": result.answer,
         "sources": result.sources,
+        "quotes": result.quotes,
         "usage": result.usage,
         "strategy": result.strategy,
         "top_k": result.top_k,
@@ -139,7 +141,7 @@ def create_app(
     chat_repository: ChatRepository | None = None,
 ) -> FastAPI:
     settings = Settings.from_env()
-    app = FastAPI(title="RAG Chat", version="2.0.0")
+    app = FastAPI(title="RAG Chat", version="3.0.0")
     app.state.search_service = search_service or SearchService(settings)
     app.state.chat_repository = chat_repository or ChatRepository(settings.chat_database_path)
     app.state.rag_service = rag_service or RAGService(
@@ -177,6 +179,8 @@ def create_app(
     @app.post("/api/chat")
     async def chat(request: ChatRequest) -> dict[str, object]:
         try:
+            if request.candidate_top_k and request.final_top_k and request.final_top_k > request.candidate_top_k:
+                raise ValueError("final_top_k must not exceed candidate_top_k")
             chat_id, result = await app.state.rag_service.ask(
                 request.question,
                 request.mode,
