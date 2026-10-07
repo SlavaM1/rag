@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-if [ ! -f data/rag/fixed/index.faiss ] || [ ! -f data/rag/structural/index.faiss ]; then
+if [ ! -f data/rag/fixed/index.faiss ] || [ ! -f data/rag/fixed_no_overlap/index.faiss ] || [ ! -f data/rag/structural/index.faiss ]; then
   python -m app.rag.indexer
 fi
 

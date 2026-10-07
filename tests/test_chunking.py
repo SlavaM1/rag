@@ -1,4 +1,4 @@
-from app.rag.chunking.fixed import FixedSizeChunker
+from app.rag.chunking.fixed import FixedSizeChunker, FixedSizeNoOverlapChunker
 from app.rag.chunking.structural import StructuralMarkdownChunker
 from app.rag.loader import MarkdownLoader
 
@@ -22,6 +22,15 @@ def test_fixed_chunks_are_stable_nonempty_and_keep_metadata(tmp_path):
     assert first[0].metadata.chunk_strategy == "fixed"
     assert first[0].metadata.source == "docs/rag/sample.md"
     assert first[0].text[-10:].split()[-1] in first[1].text
+
+
+def test_fixed_no_overlap_chunks_do_not_share_source_ranges(tmp_path):
+    document = _document(tmp_path, "# Sample\n" + ("alpha beta gamma " * 30))
+    chunks = FixedSizeNoOverlapChunker(chunk_size=80).chunk(document)
+
+    assert len(chunks) > 1
+    assert all(chunk.metadata.chunk_strategy == "fixed_no_overlap" for chunk in chunks)
+    assert all(left.metadata.end_char <= right.metadata.start_char for left, right in zip(chunks, chunks[1:]))
 
 
 def test_structural_chunks_keep_heading_hierarchy_and_fence(tmp_path):

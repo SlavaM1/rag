@@ -33,7 +33,7 @@ class FixedSizeChunker(Chunker):
                     end = boundary
             part = text[start:end].strip()
             if part:
-                chunk_id = f"{document.document_id}_fixed_{index:04d}"
+                chunk_id = f"{document.document_id}_{self.strategy}_{index:04d}"
                 metadata = make_metadata(
                     document,
                     chunk_id=chunk_id,
@@ -52,3 +52,10 @@ class FixedSizeChunker(Chunker):
                 break
             start = max(end - self.chunk_overlap, start + 1)
         return chunks
+
+
+class FixedSizeNoOverlapChunker(FixedSizeChunker):
+    strategy = "fixed_no_overlap"
+
+    def __init__(self, chunk_size: int = 1000) -> None:
+        super().__init__(chunk_size=chunk_size, chunk_overlap=0)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from .chunking import FixedSizeChunker, StructuralMarkdownChunker
+from .chunking import FixedSizeChunker, FixedSizeNoOverlapChunker, StructuralMarkdownChunker
 from .config import Settings
 from .embeddings import EmbeddingProvider, SentenceTransformerEmbeddingProvider
 from .loader import MarkdownLoader
@@ -33,6 +33,7 @@ def build_indexes(settings: Settings | None = None, provider: EmbeddingProvider 
     provider = provider or SentenceTransformerEmbeddingProvider(settings.embedding_model)
     strategies = {
         "fixed": FixedSizeChunker(settings.fixed_chunk_size, settings.fixed_chunk_overlap),
+        "fixed_no_overlap": FixedSizeNoOverlapChunker(settings.fixed_chunk_size),
         "structural": StructuralMarkdownChunker(settings.structural_max_chunk_size, settings.structural_overlap),
     }
     result: dict[str, object] = {"corpus": corpus_statistics(documents), "strategies": {}}

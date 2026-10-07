@@ -12,8 +12,8 @@ class SearchService:
         self._stores: dict[str, VectorStore] = {}
 
     def search(self, query: str, strategy: str = "structural", top_k: int | None = None) -> list[dict[str, object]]:
-        if strategy not in {"fixed", "structural"}:
-            raise ValueError("strategy must be fixed or structural")
+        if strategy not in {"fixed", "fixed_no_overlap", "structural"}:
+            raise ValueError("strategy must be fixed, fixed_no_overlap, or structural")
         top_k = top_k or self.settings.default_top_k
         if top_k < 1 or top_k > self.settings.max_top_k:
             raise ValueError(f"top_k must be between 1 and {self.settings.max_top_k}")

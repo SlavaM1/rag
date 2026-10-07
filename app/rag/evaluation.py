@@ -9,6 +9,9 @@ from .loader import MarkdownLoader
 from .search_service import SearchService
 
 
+STRATEGIES = ("fixed", "fixed_no_overlap", "structural")
+
+
 def _hit(results: list[dict[str, object]], expected_files: set[str], limit: int) -> bool:
     return any(str(result["metadata"]["file"]) in expected_files for result in results[:limit])  # type: ignore[index]
 
@@ -19,11 +22,11 @@ def compare(settings: Settings | None = None) -> dict[str, object]:
     dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
     service = SearchService(settings)
     reports: list[dict[str, object]] = []
-    metrics = {strategy: {1: 0, 3: 0, 5: 0} for strategy in ("fixed", "structural")}
+    metrics = {strategy: {1: 0, 3: 0, 5: 0} for strategy in STRATEGIES}
     for item in dataset:
         expected_files = set(item["expected_files"])
         entry: dict[str, object] = {"query": item["query"], "expected_files": item["expected_files"], "results": {}}
-        for strategy in ("fixed", "structural"):
+        for strategy in STRATEGIES:
             results = service.search(item["query"], strategy, 5)
             entry["results"][strategy] = results  # type: ignore[index]
             for limit in (1, 3, 5):
@@ -41,12 +44,14 @@ def write_report(result: dict[str, object], settings: Settings | None = None) ->
     settings = settings or Settings.from_env()
     loader = MarkdownLoader(settings.documents_path, settings.documents_path.parents[1])
     documents = loader.load_all()
-    from .chunking import FixedSizeChunker, StructuralMarkdownChunker
+    from .chunking import FixedSizeChunker, FixedSizeNoOverlapChunker, StructuralMarkdownChunker
 
     fixed_chunks = [chunk for document in documents for chunk in FixedSizeChunker(settings.fixed_chunk_size, settings.fixed_chunk_overlap).chunk(document)]
+    fixed_no_overlap_chunks = [chunk for document in documents for chunk in FixedSizeNoOverlapChunker(settings.fixed_chunk_size).chunk(document)]
     structural_chunks = [chunk for document in documents for chunk in StructuralMarkdownChunker(settings.structural_max_chunk_size, settings.structural_overlap).chunk(document)]
     corpus = corpus_statistics(documents)
     fixed_stats = chunk_statistics(fixed_chunks)
+    fixed_no_overlap_stats = chunk_statistics(fixed_no_overlap_chunks)
     structural_stats = chunk_statistics(structural_chunks)
     metrics = result["metrics"]
     lines = [
@@ -67,6 +72,15 @@ def write_report(result: dict[str, object], settings: Settings | None = None) ->
         f"min size: {fixed_stats['min_chars']}",
         f"max size: {fixed_stats['max_chars']}",
         "",
+        "## Fixed Without Overlap",
+        "",
+        f"chunk_size: {settings.fixed_chunk_size}",
+        "overlap: 0",
+        f"chunks: {fixed_no_overlap_stats['chunks']}",
+        f"average size: {fixed_no_overlap_stats['average_chars']}",
+        f"min size: {fixed_no_overlap_stats['min_chars']}",
+        f"max size: {fixed_no_overlap_stats['max_chars']}",
+        "",
         "## Structural",
         "",
         f"max_chunk_size: {settings.structural_max_chunk_size}",
@@ -78,18 +92,18 @@ def write_report(result: dict[str, object], settings: Settings | None = None) ->
         "",
         "## Evaluation",
         "",
-        "| Metric | Fixed | Structural |",
-        "|---|---:|---:|",
-        f"| Hit@1 | {metrics['fixed'][1]:.3f} | {metrics['structural'][1]:.3f} |",
-        f"| Hit@3 | {metrics['fixed'][3]:.3f} | {metrics['structural'][3]:.3f} |",
-        f"| Hit@5 | {metrics['fixed'][5]:.3f} | {metrics['structural'][5]:.3f} |",
+        "| Metric | Fixed | Fixed Without Overlap | Structural |",
+        "|---|---:|---:|---:|",
+        f"| Hit@1 | {metrics['fixed'][1]:.3f} | {metrics['fixed_no_overlap'][1]:.3f} | {metrics['structural'][1]:.3f} |",
+        f"| Hit@3 | {metrics['fixed'][3]:.3f} | {metrics['fixed_no_overlap'][3]:.3f} | {metrics['structural'][3]:.3f} |",
+        f"| Hit@5 | {metrics['fixed'][5]:.3f} | {metrics['fixed_no_overlap'][5]:.3f} | {metrics['structural'][5]:.3f} |",
         "",
         "## Queries",
         "",
     ]
     for number, report in enumerate(result["reports"], start=1):
         lines.extend([f"### Query {number}", "", str(report["query"]), "", f"Expected files: {', '.join(report['expected_files'])}", ""])
-        for strategy in ("fixed", "structural"):
+        for strategy in STRATEGIES:
             lines.extend([f"{strategy.title()} results:", ""])
             for rank, search_result in enumerate(report["results"][strategy], start=1):
                 metadata = search_result["metadata"]

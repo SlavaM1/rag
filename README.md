@@ -25,6 +25,7 @@ Vanilla JavaScript Web UI
 ## Chunking
 
 - **Fixed Size**: окна по 1000 символов с overlap 150, с попыткой сохранить границы слов.
+- **Fixed Without Overlap**: окна по 1000 символов с сохранением границ слов, без повторения текста между чанками.
 - **Structural Markdown**: Markdown-aware parser извлекает YAML front matter, H1, hierarchy headings и fenced code blocks. Каждый логический раздел остаётся отдельным; длинные разделы дополнительно делятся с overlap.
 
 У каждого результата есть детерминированный `chunk_id`, путь документа, файл, title, section и section path.
@@ -53,7 +54,7 @@ python -m app.rag.indexer
 docker compose run --rm app python -m app.rag.indexer
 ```
 
-Команда пересоздаёт оба индекса идемпотентно: `data/rag/fixed/` и `data/rag/structural/`. Generated FAISS files намеренно не коммитятся, так как воспроизводятся из `docs/rag`.
+Команда пересоздаёт все индексы идемпотентно: `data/rag/fixed/`, `data/rag/fixed_no_overlap/` и `data/rag/structural/`. Generated FAISS files намеренно не коммитятся, так как воспроизводятся из `docs/rag`.
 
 ## CLI Search
 
@@ -71,7 +72,7 @@ python -m app.rag.search_cli --query "Как работает Weather MCP?" --st
 {"query":"Как работает Weather MCP?","strategy":"structural","top_k":5}
 ```
 
-`strategy` принимает `fixed` или `structural`; `top_k` ограничен 1-20, query не может быть пустым и длиннее 1000 символов.
+`strategy` принимает `fixed`, `fixed_no_overlap` или `structural`; `top_k` ограничен 1-20, query не может быть пустым и длиннее 1000 символов.
 
 ## Compare Chunking
 

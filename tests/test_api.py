@@ -15,6 +15,7 @@ def test_health_and_search_api():
     response = client.post("/api/search", json={"query": "weather", "strategy": "fixed", "top_k": 1})
     assert response.status_code == 200
     assert response.json()["results"][0]["chunk_id"] == "chunk"
+    assert client.post("/api/search", json={"query": "weather", "strategy": "fixed_no_overlap", "top_k": 1}).status_code == 200
 
 
 def test_search_api_validates_request():

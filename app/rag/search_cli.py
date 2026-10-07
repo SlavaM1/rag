@@ -10,7 +10,7 @@ from .search_service import SearchService
 def main() -> None:
     parser = argparse.ArgumentParser(description="Search the local RAG knowledge base")
     parser.add_argument("--query", required=True)
-    parser.add_argument("--strategy", choices=["fixed", "structural"], default="structural")
+    parser.add_argument("--strategy", choices=["fixed", "fixed_no_overlap", "structural"], default="structural")
     parser.add_argument("--top-k", type=int, default=5)
     args = parser.parse_args()
     results = SearchService(Settings.from_env()).search(args.query, args.strategy, args.top_k)
