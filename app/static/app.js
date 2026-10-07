@@ -247,8 +247,8 @@ questionForm.addEventListener("submit", async (event) => {
     await loadChats();
     setBusy(false);
   } catch (error) {
-    showError(error);
     setBusy(false);
+    showError(error);
   }
 });
 
@@ -268,8 +268,8 @@ document.querySelector("#compare").addEventListener("click", async () => {
     appendMessage({ ...payload.with_rag, compareLabel: "WITH RAG" });
     setBusy(false);
   } catch (error) {
-    showError(error);
     setBusy(false);
+    showError(error);
   }
 });
 
@@ -289,8 +289,8 @@ document.querySelector("#compare-retrieval").addEventListener("click", async () 
     appendMessage({ ...payload.enhanced, compareLabel: "ENHANCED RAG" });
     setBusy(false);
   } catch (error) {
-    showError(error);
     setBusy(false);
+    showError(error);
   }
 });
 

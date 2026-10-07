@@ -132,7 +132,6 @@ class RAGService:
             chat_id = int(self.chat_repository.create_chat(self._title(question))["id"])
         history = self.chat_repository.recent_messages(chat_id, self.settings.chat_history_messages)
         task_state, task_state_version = self.chat_repository.get_task_state(chat_id)
-        user_message_id = self.chat_repository.add_user_message(chat_id, question)
         state_started = perf_counter()
         task_state_updated = False
         if self.settings.task_state_enabled:
@@ -150,6 +149,7 @@ class RAGService:
             "total_ms": self._milliseconds(turn_started),
         }
         result = replace(result, timings=result_timings)
+        user_message_id = self.chat_repository.add_user_message(chat_id, question)
         self.chat_repository.add_assistant_message(
             chat_id, result.answer, result.mode.value, result.model, result.usage, result.sources,
             result.retrieval_mode.value if result.retrieval_mode else None, result.original_question,

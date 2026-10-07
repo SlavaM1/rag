@@ -2,10 +2,12 @@ import json
 import asyncio
 from dataclasses import replace
 
+import pytest
+
 from app.rag.chat_repository import ChatRepository
 from app.rag.config import Settings
 from app.rag.context_quality import ContextQualityChecker
-from app.rag.llm import LLMResponse
+from app.rag.llm import LLMInvalidResponseError, LLMResponse
 from app.rag.rag_service import AnswerStatus, ChatMode, DeepSeekModel, RAGService, RetrievalMode
 from app.rag.task_state import TaskState, TaskStateUpdate
 
@@ -60,6 +62,14 @@ class RepairingLLMProvider:
             "answer": "Weather MCP exposes current weather [1].",
             "citations": [{"source_number": 1, "quote": quote}],
         }), model, 5, 5, 10, "stop")
+
+
+class InvalidGroundingLLMProvider:
+    async def generate(self, messages, model, json_mode=False):
+        return LLMResponse(json.dumps({
+            "answer": "Invented claim [1].",
+            "citations": [{"source_number": 1, "quote": "Invented quote"}],
+        }), model)
 
 
 class FakeReranker:
@@ -186,6 +196,17 @@ def test_invalid_quote_gets_one_controlled_repair_attempt(tmp_path):
     assert len(provider.calls) == 2
     assert result.quotes[0]["quote"] == "Weather MCP exposes current weather."
     assert result.usage["total_tokens"] == 20
+
+
+def test_failed_generation_does_not_leave_a_partial_user_message(tmp_path):
+    service, _, _, repository = make_service(tmp_path)
+    service.llm_provider = InvalidGroundingLLMProvider()
+    chat_id = int(repository.create_chat("Existing chat")["id"])
+
+    with pytest.raises(LLMInvalidResponseError):
+        asyncio.run(service.ask("Remember this constraint", ChatMode.WITH_RAG, DeepSeekModel.FLASH, chat_id=chat_id))
+
+    assert repository.get_chat(chat_id)["messages"] == []
 
 
 def test_compare_uses_the_same_model_for_both_branches(tmp_path):
