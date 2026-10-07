@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 
@@ -51,13 +52,12 @@ class GroundingValidator:
             quote = quote.strip()
             if len(quote) > 600:
                 raise GroundingValidationError("citation quote is too long")
-            if quote not in str(source["text"]):
+            exact_quote = _exact_source_quote(str(source["text"]), quote)
+            if exact_quote is None:
                 raise GroundingValidationError(
                     f"citation quote for SOURCE {source_number} is not present in that source chunk"
                 )
-            if f"[{source_number}]" not in answer:
-                raise GroundingValidationError("answer does not reference a cited source")
-
+            quote = exact_quote
             cited_numbers.add(source_number)
             key = (source_number, quote)
             if key in seen_quotes:
@@ -78,6 +78,18 @@ class GroundingValidator:
         used_sources = [source for source in sources if int(source["number"]) in cited_numbers]
         if not used_sources or not quotes:
             raise GroundingValidationError("grounded response has no validated evidence")
+        answer = re.sub(
+            r"\[(\d+)\]",
+            lambda match: match.group(0) if int(match.group(1)) in cited_numbers else "",
+            answer,
+        )
+        missing_markers = [
+            f"[{source_number}]"
+            for source_number in sorted(cited_numbers)
+            if f"[{source_number}]" not in answer
+        ]
+        if missing_markers:
+            answer = f"{answer.rstrip()} {' '.join(missing_markers)}"
         return GroundedAnswer(answer.strip(), used_sources, quotes)
 
     @staticmethod
@@ -94,3 +106,24 @@ class GroundingValidator:
         if not isinstance(payload, dict):
             raise GroundingValidationError("grounded response must be a JSON object")
         return payload
+
+
+def _exact_source_quote(source_text: str, quote: str) -> str | None:
+    if quote in source_text:
+        return quote
+
+    source_tokens = [
+        (match.group().replace("`", ""), match.start(), match.end())
+        for match in re.finditer(r"\S+", source_text)
+    ]
+    quote_tokens = [token.replace("`", "") for token in re.findall(r"\S+", quote)]
+    if not quote_tokens:
+        return None
+    normalized_source = [token for token, _start, _end in source_tokens]
+    width = len(quote_tokens)
+    for index in range(len(normalized_source) - width + 1):
+        if normalized_source[index : index + width] == quote_tokens:
+            start = source_tokens[index][1]
+            end = source_tokens[index + width - 1][2]
+            return source_text[start:end]
+    return None

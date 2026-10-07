@@ -79,7 +79,7 @@ TASK_STATE_UPDATE_PROMPT = """Ты обновляешь компактную с�
 
 
 class TaskStateUpdater:
-    def __init__(self, provider: LLMProvider, model: str) -> None:
+    def __init__(self, provider: LLMProvider | None, model: str) -> None:
         self.provider = provider
         self.model = model
 
@@ -88,6 +88,8 @@ class TaskStateUpdater:
         current: TaskState,
         user_message: str,
         recent_history: list[dict[str, str]],
+        provider: LLMProvider | None = None,
+        model: str | None = None,
     ) -> TaskStateUpdate:
         payload = {
             "current_task_state": current.model_dump(mode="json"),
@@ -95,12 +97,15 @@ class TaskStateUpdater:
             "new_user_message": user_message,
         }
         try:
-            response = await self.provider.generate(
+            selected_provider = provider or self.provider
+            if selected_provider is None:
+                raise RuntimeError("No LLM provider configured")
+            response = await selected_provider.generate(
                 [
                     {"role": "system", "content": TASK_STATE_UPDATE_PROMPT},
                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
                 ],
-                self.model,
+                model or self.model,
                 json_mode=True,
             )
             updated = TaskState.model_validate_json(_strip_json_fence(response.content))

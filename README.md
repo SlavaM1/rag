@@ -2,6 +2,46 @@
 
 Учебный проект, который явно показывает разницу между baseline generation и retrieval-augmented generation поверх Markdown-базы `docs/rag/**/*.md`. Day 21 retrieval сохраняется: Markdown loader, fixed/structural chunking, multilingual embeddings, FAISS, `/api/search`, CLI и chunking evaluation.
 
+## Day 28 - Local LLM Integration
+
+Day 28 добавляет общий `LLMProvider` для DeepSeek и локального Ollama без дублирования RAG pipeline. Новый stateless endpoint `POST /api/integration/chat` предназначен для `local-llm`: он принимает упорядоченную историю в запросе и никогда не читает и не записывает `ChatRepository`/SQLite history. Существующий `POST /api/chat` и режимы DeepSeek остаются совместимыми.
+
+Provider выбирается для каждого integration request. При `provider=ollama` все LLM-вызовы этого turn, включая Task State update, query rewrite, финальный answer и grounding repair, идут через Ollama с одной выбранной model. `DeepSeekProvider` не создаётся, `DEEPSEEK_API_KEY` не требуется. Embeddings, FAISS, similarity filter и cross-encoder reranker остаются локальными.
+
+Ollama использует native `POST /api/chat`, `stream=false`; default model — `qwen3:8b`. Пример RAG ON:
+
+```bash
+curl -sS http://localhost:8010/api/integration/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "request_id":"verify-day28-1",
+    "question":"Как работает Weather MCP?",
+    "messages":[{"role":"user","content":"Нас интересует backend."}],
+    "provider":"ollama",
+    "model":"qwen3:8b",
+    "rag_enabled":true,
+    "retrieval_mode":"enhanced",
+    "strategy":"structural",
+    "candidate_top_k":15,
+    "final_top_k":5
+  }'
+```
+
+Для RAG OFF передайте `"rag_enabled":false`: retrieval, embeddings, FAISS, filtering и reranking не запускаются, а `messages` передаются модели в исходном порядке и с исходными roles. RAG ON использует существующие rewrite/filter/rerank, context-quality guard, backend-owned sources, exact quotes и controlled grounding repair. Backend может детерминированно восстановить Markdown-backticks/пробелы цитаты до точной подстроки chunk и исправить только citation markers; неизвестный source или пересказ вместо цитаты по-прежнему отклоняется. `insufficient_context` возвращается без answer-generation и без выдуманного ответа.
+
+Response содержит `request_id`, `status`, `answer`, provider/model/RAG config, `sources`, `quotes` и `metrics`. Metrics включают UTC start time, success/HTTP/error fields, total/LLM latency, history/context/prompt sizes, фактические token counts и rates, stage timings, retrieval counts/settings, similarity threshold, rerank state и generation settings. Ollama durations переводятся из ns в ms; отсутствующие provider значения остаются `null`, а не оцениваются. Логи содержат `request_id`, provider/model, status, counts и timings, но не полный question/history/context и не ключи.
+
+Запуск и проверка:
+
+```bash
+docker compose up --build -d
+curl -sS http://localhost:8010/health
+curl -sS http://localhost:11434/api/tags
+pytest
+```
+
+Compose публикует `${RAG_WEB_PORT:-8010}:8000`, а container обращается к host Ollama через `${OLLAMA_BASE_URL:-http://host.docker.internal:11434}` и `host-gateway`. Mounted `./data` сохраняет structural/fixed FAISS indexes, metadata, SQLite и `HF_HOME`; startup переиспользует оба index и перестраивает их только при отсутствии index или metadata. Health безопасно показывает backend/retrieval readiness, Ollama availability и только boolean `deepseek_configured`.
+
 ## Day 25 - Conversational RAG And Task Memory
 
 Day 25 разделяет два вида контекста. **Conversation History** — последние реальные user/assistant сообщения, ограниченные `CHAT_HISTORY_MESSAGES=10`. **Task State** — компактная структурированная память текущего чата: `goal`, `clarifications`, `constraints`, `terms`, `decisions` и `open_questions`. Она не является пересказом всех сообщений и не переносится между чатами.
@@ -177,11 +217,11 @@ docker compose up --build -d
 docker compose ps
 ```
 
-Откройте http://localhost:8000. При первом запуске отсутствующие FAISS indexes строятся в mounted `data/`; `./data:/app/data` сохраняет indexes, metadata, Hugging Face embedding cache и SQLite chat history между рестартами.
+Откройте http://localhost:8010. При первом запуске отсутствующие FAISS indexes строятся в mounted `data/`; `./data:/app/data` сохраняет indexes, metadata, Hugging Face embedding cache и SQLite chat history между рестартами.
 
-Если host-порт 8000 занят, задайте, например, `RAG_WEB_PORT=8010` в `.env`; внутренний container port остаётся 8000.
+Чтобы использовать другой host port, задайте, например, `RAG_WEB_PORT=8000` в `.env`; внутренний container port остаётся 8000.
 
-Проверка: `curl http://localhost:8000/health`.
+Проверка: `curl http://localhost:8010/health`.
 
 SQLite chat history находится в `data/rag.db`. Она содержит `chats`, `messages`, `message_sources`, `message_quotes` и `chat_task_state`; история отправляет DeepSeek только последние `CHAT_HISTORY_MESSAGES=10` сообщений. `TASK_STATE_ENABLED=true` включает память, `TASK_STATE_MODEL=deepseek-flash` выбирает модель updater. Additive startup migration сохраняет старые чаты, а отсутствующий у legacy chat state читается как пустой.
 

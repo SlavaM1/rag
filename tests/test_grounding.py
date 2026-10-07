@@ -42,6 +42,42 @@ def test_quote_not_present_in_retrieved_chunk_is_rejected():
         GroundingValidator().validate(content, [source()])
 
 
+def test_quote_markdown_and_whitespace_are_restored_to_exact_source_text():
+    retrieved = source()
+    retrieved["text"] = "Flow:\n`get_weather_forecast`   calls wttr.in"
+    content = json.dumps({
+        "answer": "Forecast uses the weather tool [1].",
+        "citations": [{"source_number": 1, "quote": "get_weather_forecast calls wttr.in"}],
+    })
+
+    result = GroundingValidator().validate(content, [retrieved])
+
+    assert result.quotes[0]["quote"] == "`get_weather_forecast`   calls wttr.in"
+
+
+def test_missing_citation_marker_is_added_after_evidence_validation():
+    content = json.dumps({
+        "answer": "Weather MCP exposes current weather.",
+        "citations": [{"source_number": 1, "quote": "Weather MCP exposes current weather"}],
+    })
+
+    result = GroundingValidator().validate(content, [source()])
+
+    assert result.answer.endswith("[1]")
+
+
+def test_uncited_source_markers_are_removed_from_answer():
+    content = json.dumps({
+        "answer": "Weather MCP exposes current weather [2].",
+        "citations": [{"source_number": 1, "quote": "Weather MCP exposes current weather"}],
+    })
+
+    result = GroundingValidator().validate(content, [source()])
+
+    assert "[2]" not in result.answer
+    assert result.answer.endswith("[1]")
+
+
 def test_context_quality_requires_a_chunk_above_configured_threshold():
     checker = ContextQualityChecker(0.5)
 

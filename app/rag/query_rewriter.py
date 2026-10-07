@@ -9,24 +9,35 @@ logger = logging.getLogger(__name__)
 
 QUERY_REWRITE_PROMPT = """Ты преобразуешь пользовательский вопрос в поисковый запрос для semantic retrieval по технической документации.
 Сохрани исходный смысл, раскрой неявные ссылки и технические формулировки, добавь полезные ключевые понятия.
+Для русских терминов добавляй распространённые английские технические эквиваленты, которые могут встречаться в документации
+(например, «координаты города» → «geocoding latitude longitude resolved location»), не удаляя исходные ключевые слова.
 Вход может содержать Task State и недавний разговор. Используй их только для разрешения ссылок, цели, ограничений и терминов.
 Не отвечай на вопрос, не придумывай факты и верни только переписанный поисковый запрос.
 Если вопрос уже хорошо сформулирован для поиска, верни его практически без изменений."""
 
 
 class QueryRewriter:
-    def __init__(self, provider: LLMProvider, model: str) -> None:
+    def __init__(self, provider: LLMProvider | None, model: str) -> None:
         self.provider = provider
         self.model = model
 
-    async def rewrite(self, original_question: str, conversational_context: str | None = None) -> str:
+    async def rewrite(
+        self,
+        original_question: str,
+        conversational_context: str | None = None,
+        provider: LLMProvider | None = None,
+        model: str | None = None,
+    ) -> str:
         try:
-            response = await self.provider.generate(
+            selected_provider = provider or self.provider
+            if selected_provider is None:
+                raise RuntimeError("No LLM provider configured")
+            response = await selected_provider.generate(
                 [
                     {"role": "system", "content": QUERY_REWRITE_PROMPT},
                     {"role": "user", "content": conversational_context or original_question},
                 ],
-                self.model,
+                model or self.model,
             )
             rewritten = response.content.strip()
             if rewritten:

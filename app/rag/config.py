@@ -40,6 +40,12 @@ class Settings:
     min_context_similarity: float = 0.5
     task_state_enabled: bool = True
     task_state_model: str = "deepseek-flash"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_default_model: str = "qwen3:8b"
+    ollama_temperature: float = 0.2
+    ollama_max_tokens: int = 1024
+    ollama_timeout_seconds: float = 120.0
+    ollama_health_timeout_seconds: float = 2.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -83,6 +89,12 @@ class Settings:
             min_context_similarity=float(os.getenv("RAG_MIN_CONTEXT_SIMILARITY", "0.5")),
             task_state_enabled=_env_bool("TASK_STATE_ENABLED", True),
             task_state_model=os.getenv("TASK_STATE_MODEL", "deepseek-flash"),
+            ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/"),
+            ollama_default_model=os.getenv("OLLAMA_DEFAULT_MODEL", "qwen3:8b"),
+            ollama_temperature=float(os.getenv("OLLAMA_TEMPERATURE", "0.2")),
+            ollama_max_tokens=int(os.getenv("OLLAMA_MAX_TOKENS", "1024")),
+            ollama_timeout_seconds=float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "120")),
+            ollama_health_timeout_seconds=float(os.getenv("OLLAMA_HEALTH_TIMEOUT_SECONDS", "2")),
         )
 
     def index_path(self, strategy: str) -> Path:
